@@ -1,0 +1,58 @@
+# Ambiente
+.env
+.env.local
+.env.*.local
+.venv/
+venv/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Dados
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.csv
+*.xlsx
+
+# Logs
+logs/
+*.log
+
+# Reports
+reports/
+*.pdf
+
+# Prefect
+.prefect/
+
+# Streamlit
+.streamlit/
