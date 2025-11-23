@@ -10,10 +10,13 @@ from typing import Optional
 class ProdutoBase(BaseModel):
     """Dados básicos de um produto"""
     nome: str = Field(..., min_length=3, max_length=500, description="Nome do produto")
-    preco: float = Field(..., gt=0, description="Preço do produto")
+    preco: float = Field(..., gt=0, description="Preço atual do produto")
     link: str = Field(..., description="URL do produto")
     categoria: str = Field(..., description="Categoria do produto")
     produto_id_ml: Optional[str] = Field(None, description="ID do produto no Mercado Livre")
+    preco_original: Optional[float] = Field(None, description="Preço original (antes do desconto)")
+    percentual_desconto: Optional[float] = Field(None, description="Percentual de desconto aplicado")
+    imagem_url: Optional[str] = Field(None, description="URL da imagem do produto")
     
     @validator("nome")
     def nome_nao_vazio(cls, v):
@@ -34,7 +37,10 @@ class ProdutoBase(BaseModel):
                 "preco": 599.99,
                 "link": "https://produto.mercadolivre.com.br/...",
                 "categoria": "celulares",
-                "produto_id_ml": "MLB123456789"
+                "produto_id_ml": "MLB123456789",
+                "preco_original": 699.99,
+                "percentual_desconto": 14.3,
+                "imagem_url": "https://http2.mlstatic.com/D_NQ_NP_123456-MLA47842095652_102021-O.webp"
             }
         }
 

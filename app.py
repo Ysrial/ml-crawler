@@ -170,30 +170,60 @@ if produtos_filtrados:
         try:
             stats = db.obter_estatisticas_produto(produto["id"])
             
-            with st.expander(f"📦 {produto['nome'][:70]}"):
-                col1, col2, col3, col4 = st.columns(4)
+            # Título com badge de desconto
+            titulo = f"📦 {produto['nome'][:70]}"
+            if produto.get('percentual_desconto'):
+                titulo += f" 🏷️ {produto['percentual_desconto']:.0f}% OFF"
+            
+            with st.expander(titulo):
+                # Layout com imagem
+                if produto.get('imagem_url'):
+                    col_img, col_info = st.columns([1, 3])
+                    with col_img:
+                        try:
+                            st.image(produto['imagem_url'], width=120, caption="Produto")
+                        except:
+                            st.write("🖼️ Sem imagem")
+                    info_container = col_info
+                else:
+                    info_container = st
                 
-                with col1:
-                    st.metric("Preço Atual", f"R$ {produto['preco_atual']:.2f}")
-                
-                with col2:
-                    if stats and stats["variacao_percentual"] != 0:
-                        cor = "🔴" if stats["variacao_percentual"] > 0 else "🟢"
-                        st.metric(
-                            "Variação",
-                            f"{stats['variacao_percentual']:.1f}%",
-                            help=f"Desde primeira coleta"
-                        )
-                    else:
-                        st.metric("Variação", "0%")
-                
-                with col3:
-                    if stats:
-                        st.metric("Mínimo", f"R$ {stats['preco_minimo']:.2f}")
-                
-                with col4:
-                    if stats:
-                        st.metric("Máximo", f"R$ {stats['preco_maximo']:.2f}")
+                with info_container:
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        # Preço atual e original
+                        if produto.get('preco_original') and produto.get('percentual_desconto'):
+                            st.markdown(f"**Preço Atual**")
+                            st.markdown(f"# R$ {produto['preco_atual']:.2f}")
+                            st.markdown(f"~~R$ {produto['preco_original']:.2f}~~")
+                        else:
+                            st.metric("Preço Atual", f"R$ {produto['preco_atual']:.2f}")
+                    
+                    with col2:
+                        if stats and stats["variacao_percentual"] != 0:
+                            cor = "🔴" if stats["variacao_percentual"] > 0 else "🟢"
+                            st.metric(
+                                "Variação Histórica",
+                                f"{stats['variacao_percentual']:.1f}%",
+                                help=f"Desde primeira coleta"
+                            )
+                        elif produto.get('percentual_desconto'):
+                            st.metric(
+                                "Desconto Atual",
+                                f"{produto['percentual_desconto']:.1f}%",
+                                help="Desconto aplicado no preço"
+                            )
+                        else:
+                            st.metric("Variação", "0%")
+                    
+                    with col3:
+                        if stats:
+                            st.metric("Mínimo Histórico", f"R$ {stats['preco_minimo']:.2f}")
+                    
+                    with col4:
+                        if stats:
+                            st.metric("Máximo Histórico", f"R$ {stats['preco_maximo']:.2f}")
                 
                 # Histórico
                 if stats:

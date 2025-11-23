@@ -46,37 +46,134 @@ def extract_ml_id(link: str):
 
 def extract_products(html: str, limit: int = 10):
     soup = BeautifulSoup(html, "lxml")
-    selector = detect_selector(html)
 
-    if not selector:
-        print("❌ Nenhum seletor compatível encontrado.")
-        return []
-
-    items = soup.select(selector)
-    print(f"🧩 {len(items)} itens encontrados (usando '{selector}')")
+    # seletor universal atualizado (li e div)
+    items = soup.select("li.ui-search-layout__item, div.ui-search-result, div.poly-card")
+    print(f"🧩 {len(items)} itens encontrados")
 
     produtos = []
     for item in items:
         if len(produtos) >= limit:
             break
 
-        title_tag = item.select_one("a.poly-component__title, h3 a, h2 a, a.ui-search-link")
-        preco_tag = item.select_one("span.andes-money-amount__fraction, span.price-tag-fraction")
-
+        # --- TITLE / LINK ---
+        title_tag = item.select_one("a.ui-search-link, a.poly-component__title, h3 a, h2 a, a.ui-search-link")
         nome = title_tag.get_text(strip=True) if title_tag else None
-        preco = text_to_price(preco_tag.get_text(strip=True)) if preco_tag else None
         link = title_tag.get("href") if title_tag else None
 
-        # 👇 substituí aqui
-        produto_id_ml = item.get("data-id") or extract_ml_id(link)
+        # --- IMAGE ---
+        imagem_tag = item.select_one("img.ui-search-result-image__element, img")
+        imagem_url = None
+        if imagem_tag:
+            imagem_url = imagem_tag.get("data-src") or imagem_tag.get("src")
 
+        preco = None
+        preco_original = None
+        percentual_desconto = None
+
+        # ------ Estratégia A: andes-money-amount__fraction (PDP/search com andes)
+        andes_fractions = item.select(".andes-money-amount__fraction")
+        if andes_fractions:
+            # Observação: às vezes a ordem varia entre páginas — vamos tentar interpretar:
+            # - se houver >=2 fractions, muitas vezes a 1ª é original e a 2ª é atual (conforme você observou)
+            try:
+                if len(andes_fractions) >= 2:
+                    # primeira = original, segunda = atual (sua observação)
+                    preco_original = text_to_price(andes_fractions[0].get_text(strip=True))
+                    preco = text_to_price(andes_fractions[1].get_text(strip=True))
+                    print("debug: preço via andes_fractions (>=2) — original then atual")
+                else:
+                    # só uma fraction — pode ser o preço atual ou o original dependendo do layout
+                    preco = text_to_price(andes_fractions[0].get_text(strip=True))
+                    print("debug: preço via andes_fractions (1) — assumindo atual")
+            except Exception as e:
+                print(f"debug: erro ao parsear andes_fractions: {e}")
+
+        # ------ Estratégia B: procurar span/elemento com aria-label contendo "Agora:"
+        if preco is None:
+            agora_tag = item.select_one('[aria-label^="Agora:"], span[aria-label^="Agora:"], .andes-money-amount[aria-label^="Agora:"]')
+            if agora_tag:
+                # aria-label pode vir como "Agora: 4.798 reais" ou "Agora: 4.798,00 reais"
+                aria = agora_tag.get("aria-label") or agora_tag.get_text()
+                # extrair números (mantemos para text_to_price)
+                # normalizar: remover "Agora:" e "reais"
+                aria_clean = re.sub(r'(?i)\bAgora:?\b', '', aria).replace('reais', '').strip()
+                # text_to_price deve lidar com formatos brasileiros (ex: "4.798,00" ou "4798")
+                try:
+                    preco = text_to_price(aria_clean)
+                    print("debug: preço via aria-label 'Agora:'")
+                except Exception as e:
+                    print(f"debug: falha ao parsear aria 'Agora': {e}")
+
+        # ------ Estratégia C: procurar classe andes-money-amount--cents-superscript (desconto/centavos)
+        # às vezes o preço atual está em dois elementos (inteiro + cents superscript)
+        if preco is None:
+            inteiro_tag = item.select_one(".andes-money-amount__unit, .andes-money-amount__main-value")
+            cents_tag = item.select_one(".andes-money-amount--cents-superscript, .andes-money-amount__fraction--cents")
+            if inteiro_tag and cents_tag:
+                combined = f"{inteiro_tag.get_text(strip=True)},{cents_tag.get_text(strip=True)}"
+                try:
+                    preco = text_to_price(combined)
+                    print("debug: preço via inteiro + cents_supsript")
+                except Exception as e:
+                    print(f"debug: falha ao parsear inteiro+cents: {e}")
+
+        # ------ Estratégia D: fallback clássico (price-tag-fraction)
+        if preco is None:
+            price_tag_frac = item.select_one(".price-tag-fraction")
+            if price_tag_frac:
+                try:
+                    preco = text_to_price(price_tag_frac.get_text(strip=True))
+                    print("debug: preço via price-tag-fraction")
+                except Exception as e:
+                    print(f"debug: falha ao parsear price-tag-fraction: {e}")
+
+        # ------ Tentativa extra de achar preco original se ainda não foi encontrado
+        if preco_original is None:
+            # procurar preço riscado ou subprice
+            orig_tag = item.select_one(".price-tag-strike .price-tag-fraction, .price-tag__subprice .price-tag-fraction, .andes-money-amount__fraction.price-original, .andes-money-amount--original .andes-money-amount__fraction")
+            if orig_tag:
+                try:
+                    preco_original = text_to_price(orig_tag.get_text(strip=True))
+                    print("debug: preco_original via seletor riscado/subprice")
+                except Exception as e:
+                    print(f"debug: falha ao parsear preco_original: {e}")
+
+        # ------ Se ainda temos original via andes_fractions (caso len >=2 mas não calculado antes)
+        if preco_original is None and andes_fractions and len(andes_fractions) >= 2:
+            try:
+                preco_original = text_to_price(andes_fractions[0].get_text(strip=True))
+                if preco is None:
+                    preco = text_to_price(andes_fractions[1].get_text(strip=True))
+                print("debug: preco_original recuperado de andes_fractions[0]")
+            except Exception as e:
+                print(f"debug: erro ao recuperar preco_original de andes_fractions: {e}")
+
+        # ------ Calcular percentual de desconto, se possível
+        if preco_original and preco and preco_original > preco:
+            try:
+                percentual_desconto = round(((preco_original - preco) / preco_original) * 100, 1)
+            except Exception as e:
+                print(f"debug: erro ao calcular desconto: {e}")
+                percentual_desconto = None
+
+        # --- ID ML ---
+        produto_id_ml = item.get("data-id") or (extract_ml_id(link) if link else None)
+
+        # --- ADICIONA AO RESULTADO (requer nome, link e preco atual) ---
         if nome and preco and link:
             produtos.append({
                 "nome": nome,
                 "preco": preco,
+                "preco_original": preco_original,
+                "percentual_desconto": percentual_desconto,
+                "imagem_url": imagem_url,
                 "link": link,
                 "produto_id_ml": produto_id_ml
             })
+        else:
+            # debug para entender por que foi descartado
+            print(f"debug: item descartado (nome={bool(nome)}, preco={bool(preco)}, link={bool(link)})")
 
     return produtos
 
@@ -150,6 +247,9 @@ def scrape_all_pages(base_url: str, categoria: str, max_products: int = None, ma
                         produto = Produto(
                             nome=prod_data["nome"],
                             preco=prod_data["preco"],
+                            preco_original=prod_data.get("preco_original"),
+                            percentual_desconto=prod_data.get("percentual_desconto"),
+                            imagem_url=prod_data.get("imagem_url"),
                             link=prod_data["link"],
                             categoria=categoria,
                             produto_id_ml=prod_data.get("produto_id_ml")

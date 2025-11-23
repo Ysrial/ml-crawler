@@ -117,9 +117,20 @@ class DatabasePostgres:
                     categoria TEXT NOT NULL,
                     produto_id_ml TEXT,
                     preco_atual NUMERIC(10, 2),
+                    preco_original NUMERIC(10, 2),
+                    percentual_desconto NUMERIC(5, 2),
+                    imagem_url TEXT,
                     primeira_coleta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     ultima_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+            
+            # Adicionar colunas se não existirem (migração)
+            cursor.execute("""
+                ALTER TABLE produtos 
+                ADD COLUMN IF NOT EXISTS preco_original NUMERIC(10, 2),
+                ADD COLUMN IF NOT EXISTS percentual_desconto NUMERIC(5, 2),
+                ADD COLUMN IF NOT EXISTS imagem_url TEXT
             """)
             
             # Tabela de Histórico de Preços
@@ -198,10 +209,11 @@ class DatabasePostgres:
             
             # Inserir novo produto
             cursor.execute("""
-                INSERT INTO produtos (nome, link, categoria, preco_atual, produto_id_ml)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO produtos (nome, link, categoria, preco_atual, preco_original, percentual_desconto, imagem_url, produto_id_ml)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (produto.nome, produto.link, produto.categoria, produto.preco, produto.produto_id_ml))
+            """, (produto.nome, produto.link, produto.categoria, produto.preco, 
+                  produto.preco_original, produto.percentual_desconto, produto.imagem_url, produto.produto_id_ml))
             
             produto_id = cursor.fetchone()[0]
             conn.commit()
@@ -232,14 +244,16 @@ class DatabasePostgres:
             return cursor.fetchone()
         finally:
             self.release_connection(conn)
-    
     def obter_produtos_por_categoria(self, categoria: str) -> List[Dict]:
         """Lista todos os produtos de uma categoria"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
-                SELECT * FROM produtos 
+                SELECT id, nome, link, categoria, produto_id_ml, preco_atual, 
+                       preco_original, percentual_desconto, imagem_url,
+                       primeira_coleta, ultima_atualizacao
+                FROM produtos 
                 WHERE categoria = %s 
                 ORDER BY nome
             """, (categoria,))

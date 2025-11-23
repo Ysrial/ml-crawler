@@ -59,11 +59,24 @@ class Database:
                     nome TEXT NOT NULL UNIQUE,
                     link TEXT NOT NULL UNIQUE,
                     categoria TEXT NOT NULL,
+                    produto_id_ml TEXT,
                     preco_atual REAL,
+                    preco_original REAL,
+                    percentual_desconto REAL,
+                    imagem_url TEXT,
                     primeira_coleta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     ultima_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Migração: adicionar colunas se não existirem
+            try:
+                cursor.execute("ALTER TABLE produtos ADD COLUMN produto_id_ml TEXT")
+                cursor.execute("ALTER TABLE produtos ADD COLUMN preco_original REAL")
+                cursor.execute("ALTER TABLE produtos ADD COLUMN percentual_desconto REAL")
+                cursor.execute("ALTER TABLE produtos ADD COLUMN imagem_url TEXT")
+            except sqlite3.OperationalError:
+                pass  # Colunas já existem
             
             # Tabela de Histórico de Preços
             cursor.execute("""
@@ -106,9 +119,10 @@ class Database:
             cursor = conn.cursor()
             try:
                 cursor.execute("""
-                    INSERT INTO produtos (nome, link, categoria, preco_atual)
-                    VALUES (?, ?, ?, ?)
-                """, (produto.nome, produto.link, produto.categoria, produto.preco))
+                    INSERT INTO produtos (nome, link, categoria, preco_atual, preco_original, percentual_desconto, imagem_url, produto_id_ml)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (produto.nome, produto.link, produto.categoria, produto.preco, 
+                      produto.preco_original, produto.percentual_desconto, produto.imagem_url, produto.produto_id_ml))
                 
                 produto_id = cursor.lastrowid
                 logger.info(f"✅ Produto adicionado: {produto.nome} (ID: {produto_id})")
@@ -122,6 +136,14 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM produtos WHERE link = ?", (link,))
+            resultado = cursor.fetchone()
+            return dict(resultado) if resultado else None
+    
+    def obter_produto_por_id_ml(self, produto_id_ml: str) -> Optional[dict]:
+        """Obtém produto pelo ID do Mercado Livre"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM produtos WHERE produto_id_ml = ?", (produto_id_ml,))
             resultado = cursor.fetchone()
             return dict(resultado) if resultado else None
     
