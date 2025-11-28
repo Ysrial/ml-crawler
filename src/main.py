@@ -1,10 +1,9 @@
-from .scraper import scrape_all_pages
+from .scraper import scrape_all_pages, scrape_all_pages_api
 from urllib.parse import urlparse
 import sys
 
 def extrair_categoria_da_url(url: str) -> str:
     """Extrai a categoria da URL do Mercado Livre."""
-    # Exemplo: "https://lista.mercadolivre.com.br/celular" -> "celular"
     path = urlparse(url).path
     categoria = path.strip("/").split("/")[0] if path else "geral"
     return categoria.lower()
@@ -17,12 +16,9 @@ def main():
         sys.exit(1)
     
     url = sys.argv[1]
-    
-    # Parâmetros opcionais de linha de comando
     max_produtos = int(sys.argv[2]) if len(sys.argv) > 2 else None
     max_paginas = int(sys.argv[3]) if len(sys.argv) > 3 else 10
     
-    # Extrair categoria da URL
     categoria = extrair_categoria_da_url(url)
     
     print(f"🚀 Iniciando scraping com integração ao banco de dados...")
@@ -31,8 +27,16 @@ def main():
     print(f"Máximo de produtos: {max_produtos if max_produtos else 'Ilimitado'}")
     print(f"Máximo de páginas: {max_paginas}\n")
     
-    # Realizar scraping com integração ao banco de dados
-    resultado = scrape_all_pages(url, categoria, max_produtos, max_paginas)
+    # query textual para API — transformar '-' e '_' em espaço
+    query = categoria.replace("-", " ").replace("_", " ")
+
+    # Chamada CORRETA: passar query (string simples), não a url inteira
+    resultado = scrape_all_pages_api(
+        query=query,
+        categoria=categoria,
+        max_products=max_produtos,
+        max_pages=max_paginas
+    )
 
     if resultado["status"] == "sucesso":
         print(f"\n✅ Coleta finalizada com sucesso!")

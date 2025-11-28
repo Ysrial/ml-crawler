@@ -22,11 +22,93 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Tema
+# Tema e estilos personalizados
 st.markdown("""
     <style>
+    /* Métricas */
     [data-testid="stMetricValue"] {
         font-size: 1.5rem;
+    }
+    
+    /* Cards de produtos */
+    .product-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        height: 100%;
+        border: 1px solid #e0e0e0;
+    }
+    
+    .product-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        transform: translateY(-2px);
+    }
+    
+    .product-image {
+        width: 100%;
+        height: 200px;
+        object-fit: contain;
+        border-radius: 8px;
+        background: #f8f9fa;
+        padding: 10px;
+    }
+    
+    .product-name {
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: #333;
+        margin: 12px 0;
+        min-height: 48px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    
+    .price-current {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #00a650;
+        margin: 8px 0;
+    }
+    
+    .price-original {
+        font-size: 0.9rem;
+        color: #999;
+        text-decoration: line-through;
+        margin-bottom: 4px;
+    }
+    
+    .discount-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #00a650 0%, #00b359 100%);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+    
+    .product-link {
+        display: inline-block;
+        background: #3483fa;
+        color: white !important;
+        padding: 10px 20px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 500;
+        text-align: center;
+        width: 100%;
+        margin-top: 12px;
+        transition: background 0.2s;
+    }
+    
+    .product-link:hover {
+        background: #2968c8;
+        text-decoration: none;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -137,13 +219,13 @@ if relatorio["ultima_coleta"]:
     with col1:
         st.info(f"📅 Última coleta: {coleta['data_inicio']}")
     with col2:
-        st.info(f"✅ {coleta['total_produtos']} produtos encontrados")
+        st.info(f"✅ {coleta['total_produtos']} produtos processados na coleta")
     with col3:
         st.info(f"🔄 Status: {coleta['status'].upper()}")
 
 st.markdown("---")
 
-# ========== LISTA DE PRODUTOS ==========
+# ========== GRID DE PRODUTOS EM CARDS ==========
 st.markdown("## 🛍️ Produtos Monitorados")
 
 # Filtro e busca
@@ -153,7 +235,7 @@ with col1:
     busca = st.text_input("🔍 Buscar produto", "")
 
 with col2:
-    limite = st.slider("Mostrar", 5, 50, 10)
+    limite = st.slider("Mostrar", 6, 48, 12, step=6)
 
 # Filtrar produtos
 if busca:
@@ -164,97 +246,56 @@ if busca:
 else:
     produtos_filtrados = produtos[:limite]
 
-# Exibir produtos
+# Exibir produtos em grid de cards
 if produtos_filtrados:
-    for i, produto in enumerate(produtos_filtrados):
-        try:
-            stats = db.obter_estatisticas_produto(produto["id"])
-            
-            # Título com badge de desconto
-            titulo = f"📦 {produto['nome'][:70]}"
-            if produto.get('percentual_desconto'):
-                titulo += f" 🏷️ {produto['percentual_desconto']:.0f}% OFF"
-            
-            with st.expander(titulo):
-                # Layout com imagem
-                if produto.get('imagem_url'):
-                    col_img, col_info = st.columns([1, 3])
-                    with col_img:
-                        try:
-                            st.image(produto['imagem_url'], width=120, caption="Produto")
-                        except:
-                            st.write("🖼️ Sem imagem")
-                    info_container = col_info
-                else:
-                    info_container = st
-                
-                with info_container:
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        # Preço atual e original
-                        if produto.get('preco_original') and produto.get('percentual_desconto'):
-                            st.markdown(f"**Preço Atual**")
-                            st.markdown(f"# R$ {produto['preco_atual']:.2f}")
-                            st.markdown(f"~~R$ {produto['preco_original']:.2f}~~")
-                        else:
-                            st.metric("Preço Atual", f"R$ {produto['preco_atual']:.2f}")
-                    
-                    with col2:
-                        if stats and stats["variacao_percentual"] != 0:
-                            cor = "🔴" if stats["variacao_percentual"] > 0 else "🟢"
-                            st.metric(
-                                "Variação Histórica",
-                                f"{stats['variacao_percentual']:.1f}%",
-                                help=f"Desde primeira coleta"
-                            )
-                        elif produto.get('percentual_desconto'):
-                            st.metric(
-                                "Desconto Atual",
-                                f"{produto['percentual_desconto']:.1f}%",
-                                help="Desconto aplicado no preço"
-                            )
-                        else:
-                            st.metric("Variação", "0%")
-                    
-                    with col3:
-                        if stats:
-                            st.metric("Mínimo Histórico", f"R$ {stats['preco_minimo']:.2f}")
-                    
-                    with col4:
-                        if stats:
-                            st.metric("Máximo Histórico", f"R$ {stats['preco_maximo']:.2f}")
-                
-                # Histórico
-                if stats:
-                    historico = db.obter_historico_preco(produto["id"], dias_historico)
-                    
-                    if historico:
-                        df = pd.DataFrame(historico)
-                        
-                        # Gráfico
-                        fig = px.line(
-                            df,
-                            x="data",
-                            y="preco",
-                            title="Histórico de Preço",
-                            labels={
-                                "preco": "Preço (R$)",
-                                "data": "Data"
-                            },
-                            markers=True
-                        )
-                        fig.update_layout(height=300, showlegend=False)
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                # Link do produto
-                st.markdown(f"[🔗 Abrir no Mercado Livre]({produto['link']})")
+    # Criar grid de 3 colunas
+    num_cols = 3
+    rows = [produtos_filtrados[i:i+num_cols] for i in range(0, len(produtos_filtrados), num_cols)]
+    
+    for row in rows:
+        cols = st.columns(num_cols)
         
-        except Exception as e:
-            st.warning(f"⚠️ Erro ao carregar dados do produto {i+1}")
+        for idx, produto in enumerate(row):
+            with cols[idx]:
+                # Card HTML
+                imagem_url = produto.get('imagem_url', '')
+                nome = produto['nome'][:80]
+                preco_atual = produto['preco_atual']
+                preco_original = produto.get('preco_original')
+                percentual_desconto = produto.get('percentual_desconto')
+                link = produto['link']
+                
+                # Construir HTML do card
+                card_html = f"""
+                <div class="product-card">
+                    <img src="{imagem_url}" class="product-image" onerror="this.src='https://via.placeholder.com/200x200?text=Sem+Imagem'">
+                    <div class="product-name">{nome}</div>
+                """
+                
+                # Badge de desconto (mostrar valor em reais)
+                if preco_original and preco_original > preco_atual:
+                    desconto_reais = preco_original - preco_atual
+                    card_html += f'<div class="discount-badge">R$ {desconto_reais:.0f} OFF</div>'
+                
+                # Preço original (se houver desconto)
+                if preco_original and preco_original > preco_atual:
+                    card_html += f'<div class="price-original">De R$ {preco_original:.2f}</div>'
+
+                
+                # Preço atual
+                card_html += f'<div class="price-current">R$ {preco_atual:.2f}</div>'
+                
+                # Link para o produto
+                card_html += f"""
+                    <a href="{link}" target="_blank" class="product-link">Ver no Mercado Livre</a>
+                </div>
+                """
+                
+                st.markdown(card_html, unsafe_allow_html=True)
 
 else:
     st.info("Nenhum produto encontrado com esses critérios.")
+
 
 st.markdown("---")
 

@@ -55,7 +55,91 @@ CATEGORIAS = {
         "max_paginas": 6,
         "max_produtos_por_pagina": 50,
         "descricao": "Higiene e Limpeza: Bens de consumo"
-    }
+    },
+    "eletronicos": {
+        "url": "https://lista.mercadolivre.com.br/eletronicos",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Eletrônicos e tecnologia"
+    },
+    "placa-mae": {
+        "url": "https://lista.mercadolivre.com.br/placa-mae",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Placa Mãe"
+    },
+    "placa-de-video": {
+        "url": "https://lista.mercadolivre.com.br/placa-de-video",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Placa de Vídeo"
+    },
+    "processador": {
+        "url": "https://lista.mercadolivre.com.br/processador",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Processador"
+    },
+    "memoria-ram": {
+        "url": "https://lista.mercadolivre.com.br/memoria-ram",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Memória RAM"
+    },
+    "fonte": {
+        "url": "https://lista.mercadolivre.com.br/fonte",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Fonte"
+    },
+    "cooler": {
+        "url": "https://lista.mercadolivre.com.br/cooler",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Cooler"
+    },
+    "monitor": {
+        "url": "https://lista.mercadolivre.com.br/monitor",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Monitor"
+    },
+    "mouse": {
+        "url": "https://lista.mercadolivre.com.br/mouse",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Mouse"
+    },
+    "teclado": {
+        "url": "https://lista.mercadolivre.com.br/teclado",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Teclado"
+    },
+    "headset": {
+        "url": "https://lista.mercadolivre.com.br/headset",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Headset"
+    },
+    "microfone": {
+        "url": "https://lista.mercadolivre.com.br/microfone",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Microfone"
+    },
+    "webcam": {
+        "url": "https://lista.mercadolivre.com.br/webcam",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Webcam"
+    },
+    "caixa-de-som": {
+        "url": "https://lista.mercadolivre.com.br/caixa-de-som",
+        "max_paginas": 6,
+        "max_produtos_por_pagina": 50,
+        "descricao": "Eletrônicos e Tecnologia: Caixa de Som"
+    },
 }
 
 # ========== CAMINHOS E DIRETÓRIOS ==========

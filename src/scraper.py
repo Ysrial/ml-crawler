@@ -3,8 +3,9 @@ from bs4 import BeautifulSoup
 from .utils import text_to_price
 from .models import Produto
 from .database_postgres import get_database
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, quote_plus
 import re
+import time
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
@@ -43,124 +44,450 @@ def extract_ml_id(link: str):
 
     return None
 
+# ============================================================
+# 🔥 EXTRAI UM PRODUTO DA API E CONVERTE PARA O MESMO FORMATO DO HTML
+# ============================================================
+def extract_product_from_api_item(item):
+    """
+    Converte o item da API do Mercado Livre para o mesmo dicionário
+    usado na função extract_products() do HTML.
+    """
+
+    nome = item.get("title")
+    preco = item.get("price")
+    link = item.get("permalink")
+    produto_id_ml = item.get("id")
+
+    thumbnail = item.get("thumbnail")
+    thumbnail = thumbnail.replace("http://", "https://") if thumbnail else None
+
+    # PREÇO ORIGINAL / DESCONTO
+    preco_original = None
+    percentual_desconto = None
+
+    if "original_price" in item and item["original_price"]:
+        preco_original = float(item["original_price"])
+        if preco_original > preco:
+            percentual_desconto = round(((preco_original - preco) / preco_original) * 100, 1)
+
+    return {
+        "nome": nome,
+        "preco": preco,
+        "preco_original": preco_original,
+        "percentual_desconto": percentual_desconto,
+        "imagem_url": thumbnail,
+        "link": link,
+        "produto_id_ml": produto_id_ml
+    }
+
+
+# ============================================================
+# 🔥 NOVO SCRAPER USANDO A API (SEM MEXER NO HTML)
+# ============================================================
+
+# --- helper: busca produtos via API com headers, timeout e retries ---
+def get_products_from_api(query: str, limit: int = 50, offset: int = 0, retries: int = 2, backoff: float = 0.5):
+    """
+    Consulta a API pública do Mercado Libre e retorna a lista 'results'.
+    query: string de busca (ex: 'celular', 'iphone 12')
+    """
+    base_url = "https://api.mercadolibre.com/sites/MLB/search"
+    params = {
+        "q": query,
+        "limit": limit,
+        "offset": offset
+    }
+    headers = {
+        "User-Agent": HEADERS.get("User-Agent", "ml-crawler/1.0"),
+        "Accept": "application/json"
+    }
+
+    for attempt in range(1, retries + 2):
+        try:
+            r = requests.get(base_url, params=params, headers=headers, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                return data.get("results", []), data
+            else:
+                print(f"⚠️ API HTTP {r.status_code} — tentativa {attempt}: {r.text[:200]}")
+        except Exception as e:
+            print(f"⚠️ Erro na requisição API (tentativa {attempt}): {e}")
+
+        if attempt <= retries:
+            time.sleep(backoff * attempt)
+
+    # se falhou todas as tentativas
+    return [], None
+
+
+# --- substitua por esta função no seu scraper.py ---
+def scrape_all_pages_api(query: str, categoria: str, max_products: int = None, max_pages: int = 10):
+    """
+    Faz scraping via API do Mercado Libre, com paginação e salvando no banco.
+    - query: texto de busca (ex: 'celular', 'iphone 12')
+    - categoria: nome lógico usado para persistir a coleta
+    - max_products: limite opcional de produtos (None = ilimitado)
+    - max_pages: limite de páginas (50 itens por página da API)
+    """
+    db = get_database()
+    coleta_id = db.iniciar_coleta(categoria)
+    total_novos = 0
+    total_atualizados = 0
+    total_produtos = 0
+
+    try:
+        print("\n🚀 Iniciando scraping via API do Mercado Livre...")
+        # normaliza query: se vier com '-' ou '_' transforma em espaços
+        query_text = str(query).replace("-", " ").replace("_", " ").strip()
+
+        for page in range(max_pages):
+            offset = page * 50
+            print(f"\n📄 Página {page+1} (offset {offset}) — query: '{query_text}'")
+
+            resultados, raw = get_products_from_api(query_text, limit=50, offset=offset)
+            if raw is None:
+                print("❌ Falha ao consultar API (nenhuma resposta válida).")
+            count = len(resultados)
+            print(f"🔎 {count} produtos retornados pela API (página {page+1})")
+
+            # se API não trouxe resultados já no primeiro page, vamos fazer fallback para o HTML
+            if count == 0 and page == 0:
+                print("⚠️ API retornou 0 resultados na primeira página — executando fallback para HTML.")
+                # construir URL de busca padrão para o HTML scraper usando a categoria
+                html_search_url = f"https://lista.mercadolivre.com.br/{categoria}"
+                # chama o HTML scraper original (mantém testes intactos)
+                fallback_result = scrape_all_pages(html_search_url, categoria, max_products=max_products, max_pages=max_pages)
+                # garantir finalizar coleta atual (a função scrape_all_pages já finaliza a própria coleta no DB)
+                db.finalizar_coleta(coleta_id, 0, 0, 0, True)
+                return fallback_result
+
+            if not resultados:
+                print("⚠️ Sem resultados nesta página — parando paginação.")
+                break
+
+            for p in resultados:
+                total_produtos += 1
+
+                preco = p.get("price")
+                preco_original = p.get("original_price")
+                link = p.get("permalink")
+                nome = p.get("title")
+                imagem = p.get("thumbnail")
+                produto_id_ml = p.get("id")
+
+                percentual = None
+                if preco_original and preco and preco_original > preco:
+                    percentual = round(((preco_original - preco) / preco_original) * 100, 1)
+
+                # salvar / atualizar no banco
+                existente = None
+                if produto_id_ml:
+                    existente = db.obter_produto_por_id_ml(produto_id_ml)
+                else:
+                    existente = db.obter_produto_por_link(link) if link else None
+
+                if existente:
+                    db.atualizar_produto_completo(
+                        existente["id"],
+                        preco=preco,
+                        preco_original=preco_original,
+                        percentual_desconto=percentual,
+                        imagem_url=imagem
+                    )
+                    total_atualizados += 1
+                else:
+                    produto = Produto(
+                        nome=nome,
+                        preco=preco,
+                        preco_original=preco_original,
+                        percentual_desconto=percentual,
+                        imagem_url=imagem,
+                        link=link,
+                        categoria=categoria,
+                        produto_id_ml=produto_id_ml
+                    )
+                    db.adicionar_produto(produto)
+                    total_novos += 1
+
+                # respeitar limite de produtos
+                if max_products and total_produtos >= max_products:
+                    print(f"📊 Limite de {max_products} produtos atingido.")
+                    break
+
+            if max_products and total_produtos >= max_products:
+                break
+
+            # pequeno delay para não pisar na API (e evitar rate-limits)
+            time.sleep(0.2)
+
+        db.finalizar_coleta(coleta_id, total_produtos, total_novos, total_atualizados, True)
+
+        print("\n✅ Coleta via API finalizada com sucesso!")
+        return {
+            "status": "sucesso",
+            "total_produtos": total_produtos,
+            "total_novos": total_novos,
+            "total_atualizados": total_atualizados
+        }
+
+    except Exception as e:
+        db.finalizar_coleta(coleta_id, total_produtos, total_novos, total_atualizados, False, str(e))
+        print(f"❌ Erro geral na coleta via API: {e}")
+        return {
+            "status": "erro",
+            "erro": str(e),
+            "total_produtos": total_produtos,
+            "total_novos": total_novos,
+            "total_atualizados": total_atualizados
+        }
+
+def extract_price_from_product_page(link: str):
+    try:
+        html = fetch_html(link)
+        soup = BeautifulSoup(html, "lxml")
+
+        preco = None
+        preco_original = None
+
+        # ==============================
+        # 1) PREÇO ATUAL (3 formas)
+        # ==============================
+
+        # Forma A — padrão (meta tag)
+        meta_price = soup.select_one('meta[itemprop="price"]')
+        if meta_price:
+            try:
+                preco = float(meta_price["content"])
+            except:
+                pass
+
+        # Forma B — layout novo (span fraction + cents)
+        if preco is None:
+            price_container = soup.select_one(
+                ".ui-pdp-price__second-line .andes-money-amount"
+            )
+            if price_container:
+                frac = price_container.select_one(".andes-money-amount__fraction")
+                cents = price_container.select_one(".andes-money-amount__cents")
+                if frac:
+                    f = frac.get_text(strip=True)
+                    c = cents.get_text(strip=True) if cents else "00"
+                    try:
+                        preco = float(f"{f}.{c}")
+                    except:
+                        pass
+
+        # Forma C — fallback para QUALQUER preço visível
+        if preco is None:
+            number = soup.select_one("[itemprop=price]")
+            if number and number.get("content"):
+                try:
+                    preco = float(number["content"])
+                except:
+                    pass
+
+        # ==============================
+        # 2) PREÇO ORIGINAL (antes do desconto)
+        # ==============================
+        orig = soup.select_one("s.andes-money-amount--previous")
+        if orig:
+            frac = orig.select_one(".andes-money-amount__fraction")
+            cents = orig.select_one(".andes-money-amount__cents")
+
+            if frac:
+                f = frac.get_text(strip=True)
+                c = cents.get_text(strip=True) if cents else "00"
+                try:
+                    preco_original = float(f"{f}.{c}")
+                except:
+                    pass
+
+        return preco, preco_original
+
+    except Exception as e:
+        print(f"❌ Erro ao extrair preço da página interna: {e}")
+        return None, None
 
 def extract_products(html: str, limit: int = 10):
+    print("\n======================")
+    print("🔍 INICIANDO extract_products")
+    print("======================")
+
     soup = BeautifulSoup(html, "lxml")
 
-    # seletor universal atualizado (li e div)
-    items = soup.select("li.ui-search-layout__item, div.ui-search-result, div.poly-card")
-    print(f"🧩 {len(items)} itens encontrados")
+    # Mostrar início do HTML (para debug de layout)
+    print("\n[DEBUG] HTML inicial (500 chars):")
+    print(html[:500])
+    print("\n------------------------------------\n")
+
+    # Testar todos seletores conhecidos
+    SELECTORES_TESTE = {
+        "layout_antigo": "li.ui-search-layout__item",
+        "layout_novo": "div.ui-search-result",
+        "wrapper": "div.ui-search-result__wrapper",
+        "poly-card": "div.poly-card",
+        "poly-large": "div.poly-card--large",
+        "grid": "a.ui-search-link"
+    }
+
+    for nome, seletor in SELECTORES_TESTE.items():
+        encontrados = soup.select(seletor)
+        print(f"[DEBUG] seletor '{nome}' = {len(encontrados)} itens")
+
+    # Seletor final
+    items = soup.select(
+        "li.ui-search-layout__item, "
+        "div.ui-search-result__wrapper, "
+        "div.ui-search-result"
+    )
+
+    print(f"[ML DEBUG] Cards encontrados com seletor novo: {len(items)}")
+
+    if len(items) == 0:
+        print("❌ NENHUM item encontrado — layout mudou!")
+        return []
 
     produtos = []
-    for item in items:
+
+    for index, item in enumerate(items):
         if len(produtos) >= limit:
             break
 
-        # --- TITLE / LINK ---
-        title_tag = item.select_one("a.ui-search-link, a.poly-component__title, h3 a, h2 a, a.ui-search-link")
+        print("\n------------------------------")
+        print(f"📌 ITEM {index+1}")
+        print("------------------------------")
+
+        # Log do HTML do item
+        print("[DEBUG] HTML do item (300 chars):")
+        print(str(item)[:300])
+        print("--------------------------------")
+
+        # ---------------- TITLE / LINK ----------------
+        title_tag = item.select_one("a.ui-search-link, a.poly-component__title, h3 a, h2 a")
         nome = title_tag.get_text(strip=True) if title_tag else None
         link = title_tag.get("href") if title_tag else None
 
-        # --- IMAGE ---
+        print(f"📝 Nome: {nome}")
+        print(f"🔗 Link: {link}")
+
+        # ---------------- IMAGE ----------------
         imagem_tag = item.select_one("img.ui-search-result-image__element, img")
         imagem_url = None
         if imagem_tag:
             imagem_url = imagem_tag.get("data-src") or imagem_tag.get("src")
+        print(f"🖼️ Imagem: {imagem_url}")
 
         preco = None
         preco_original = None
+
+        # ============================================================
+        # 1) META PRICE
+        # ============================================================
+        meta_price = item.select_one('meta[itemprop="price"]')
+        if meta_price:
+            try:
+                preco = float(meta_price["content"])
+                print(f"💰 Preço META encontrado: {preco}")
+            except:
+                print("⚠️ Falha ao converter META price")
+
+        # ============================================================
+        # 2) PREÇO ORIGINAL
+        # ============================================================
+        orig_tag = item.select_one(
+            ".andes-money-amount--previous, "
+            ".price-tag-strike .price-tag-fraction, "
+            ".andes-money-amount--original .andes-money-amount__fraction"
+        )
+        if orig_tag:
+            try:
+                preco_original = text_to_price(orig_tag.get_text(strip=True))
+                print(f"🏷️ Preço ORIGINAL encontrado: {preco_original}")
+            except:
+                print("⚠️ Falha ao converter preço original")
+
+        # ============================================================
+        # 3) PREÇO ATUAL
+        # ============================================================
+        preco_atual_tag = item.select_one(
+            ".andes-money-amount__fraction, "
+            ".ui-search-price__second-line .andes-money-amount__fraction"
+        )
+        if preco_atual_tag and preco is None:
+            try:
+                preco = text_to_price(preco_atual_tag.get_text(strip=True))
+                print(f"💵 Preço ATUAL encontrado: {preco}")
+            except:
+                print("⚠️ Falha ao converter preço atual")
+
+        # ============================================================
+        # FALLBACK FRACTIONS
+        # ============================================================
+        if preco is None:
+            fractions = item.select(".andes-money-amount__fraction")
+            print(f"[DEBUG] Fractions encontradas: {len(fractions)}")
+
+            if len(fractions) >= 1:
+                try:
+                    valores = [text_to_price(x.get_text(strip=True)) for x in fractions]
+                    print(f"[DEBUG] valores fractions: {valores}")
+
+                    if len(valores) >= 2 and valores[0] != valores[1]:
+                        maior = max(valores)
+                        menor = min(valores)
+
+                        preco_original = maior
+                        preco = menor
+
+                        print(f"🔥 FALLBACK → original={maior}, atual={menor}")
+                    else:
+                        preco = valores[0]
+                        print(f"🔥 FALLBACK → preco único={preco}")
+
+                except Exception as e:
+                    print(f"⚠️ Erro ao processar fractions: {e}")
+
+        # ============================================================
+        # FALLBACK FINAL
+        # ============================================================
+        if preco is None:
+            frac = item.select_one(".price-tag-fraction")
+            if frac:
+                preco = text_to_price(frac.get_text(strip=True))
+                print(f"🔥 FALLBACK FINAL → preco={preco}")
+
+        # ============================================================
+        # VERY IMPORTANT: BUSCAR NA PÁGINA INTERNA!
+        # ============================================================
+        if (preco is None or preco_original is None) and link:
+            print("➡️ Indo buscar preços na página interna...")
+            preco2, preco_original2 = extract_price_from_product_page(link)
+            print(f"🔙 Page internal → preco={preco2}, original={preco_original2}")
+
+            if preco is None: preco = preco2
+            if preco_original is None: preco_original = preco_original2
+
+        # ============================================================
+        # DESCONTO
+        # ============================================================
         percentual_desconto = None
-
-        # ------ Estratégia A: andes-money-amount__fraction (PDP/search com andes)
-        andes_fractions = item.select(".andes-money-amount__fraction")
-        if andes_fractions:
-            # Observação: às vezes a ordem varia entre páginas — vamos tentar interpretar:
-            # - se houver >=2 fractions, muitas vezes a 1ª é original e a 2ª é atual (conforme você observou)
-            try:
-                if len(andes_fractions) >= 2:
-                    # primeira = original, segunda = atual (sua observação)
-                    preco_original = text_to_price(andes_fractions[0].get_text(strip=True))
-                    preco = text_to_price(andes_fractions[1].get_text(strip=True))
-                    print("debug: preço via andes_fractions (>=2) — original then atual")
-                else:
-                    # só uma fraction — pode ser o preço atual ou o original dependendo do layout
-                    preco = text_to_price(andes_fractions[0].get_text(strip=True))
-                    print("debug: preço via andes_fractions (1) — assumindo atual")
-            except Exception as e:
-                print(f"debug: erro ao parsear andes_fractions: {e}")
-
-        # ------ Estratégia B: procurar span/elemento com aria-label contendo "Agora:"
-        if preco is None:
-            agora_tag = item.select_one('[aria-label^="Agora:"], span[aria-label^="Agora:"], .andes-money-amount[aria-label^="Agora:"]')
-            if agora_tag:
-                # aria-label pode vir como "Agora: 4.798 reais" ou "Agora: 4.798,00 reais"
-                aria = agora_tag.get("aria-label") or agora_tag.get_text()
-                # extrair números (mantemos para text_to_price)
-                # normalizar: remover "Agora:" e "reais"
-                aria_clean = re.sub(r'(?i)\bAgora:?\b', '', aria).replace('reais', '').strip()
-                # text_to_price deve lidar com formatos brasileiros (ex: "4.798,00" ou "4798")
-                try:
-                    preco = text_to_price(aria_clean)
-                    print("debug: preço via aria-label 'Agora:'")
-                except Exception as e:
-                    print(f"debug: falha ao parsear aria 'Agora': {e}")
-
-        # ------ Estratégia C: procurar classe andes-money-amount--cents-superscript (desconto/centavos)
-        # às vezes o preço atual está em dois elementos (inteiro + cents superscript)
-        if preco is None:
-            inteiro_tag = item.select_one(".andes-money-amount__unit, .andes-money-amount__main-value")
-            cents_tag = item.select_one(".andes-money-amount--cents-superscript, .andes-money-amount__fraction--cents")
-            if inteiro_tag and cents_tag:
-                combined = f"{inteiro_tag.get_text(strip=True)},{cents_tag.get_text(strip=True)}"
-                try:
-                    preco = text_to_price(combined)
-                    print("debug: preço via inteiro + cents_supsript")
-                except Exception as e:
-                    print(f"debug: falha ao parsear inteiro+cents: {e}")
-
-        # ------ Estratégia D: fallback clássico (price-tag-fraction)
-        if preco is None:
-            price_tag_frac = item.select_one(".price-tag-fraction")
-            if price_tag_frac:
-                try:
-                    preco = text_to_price(price_tag_frac.get_text(strip=True))
-                    print("debug: preço via price-tag-fraction")
-                except Exception as e:
-                    print(f"debug: falha ao parsear price-tag-fraction: {e}")
-
-        # ------ Tentativa extra de achar preco original se ainda não foi encontrado
-        if preco_original is None:
-            # procurar preço riscado ou subprice
-            orig_tag = item.select_one(".price-tag-strike .price-tag-fraction, .price-tag__subprice .price-tag-fraction, .andes-money-amount__fraction.price-original, .andes-money-amount--original .andes-money-amount__fraction")
-            if orig_tag:
-                try:
-                    preco_original = text_to_price(orig_tag.get_text(strip=True))
-                    print("debug: preco_original via seletor riscado/subprice")
-                except Exception as e:
-                    print(f"debug: falha ao parsear preco_original: {e}")
-
-        # ------ Se ainda temos original via andes_fractions (caso len >=2 mas não calculado antes)
-        if preco_original is None and andes_fractions and len(andes_fractions) >= 2:
-            try:
-                preco_original = text_to_price(andes_fractions[0].get_text(strip=True))
-                if preco is None:
-                    preco = text_to_price(andes_fractions[1].get_text(strip=True))
-                print("debug: preco_original recuperado de andes_fractions[0]")
-            except Exception as e:
-                print(f"debug: erro ao recuperar preco_original de andes_fractions: {e}")
-
-        # ------ Calcular percentual de desconto, se possível
         if preco_original and preco and preco_original > preco:
-            try:
-                percentual_desconto = round(((preco_original - preco) / preco_original) * 100, 1)
-            except Exception as e:
-                print(f"debug: erro ao calcular desconto: {e}")
-                percentual_desconto = None
+            percentual_desconto = round(((preco_original - preco) / preco_original) * 100, 1)
+            print(f"💸 Desconto calculado: {percentual_desconto}%")
 
-        # --- ID ML ---
+        # ============================================================
+        # ID ML
+        # ============================================================
         produto_id_ml = item.get("data-id") or (extract_ml_id(link) if link else None)
+        print(f"🆔 ID ML: {produto_id_ml}")
 
-        # --- ADICIONA AO RESULTADO (requer nome, link e preco atual) ---
+        # ============================================================
+        # VALIDAÇÃO
+        # ============================================================
+        if not nome: print("❌ Sem nome — descartado")
+        if not preco: print("❌ Sem preço — descartado")
+        if not link: print("❌ Sem link — descartado")
+
         if nome and preco and link:
             produtos.append({
                 "nome": nome,
@@ -171,9 +498,11 @@ def extract_products(html: str, limit: int = 10):
                 "link": link,
                 "produto_id_ml": produto_id_ml
             })
-        else:
-            # debug para entender por que foi descartado
-            print(f"debug: item descartado (nome={bool(nome)}, preco={bool(preco)}, link={bool(link)})")
+            print("✅ Produto adicionado!")
+
+    print("\n======================")
+    print(f"🏁 FINAL — {len(produtos)} produtos extraídos")
+    print("======================\n")
 
     return produtos
 
@@ -239,9 +568,13 @@ def scrape_all_pages(base_url: str, categoria: str, max_products: int = None, ma
                         existente = db.obter_produto_por_link(prod_data["link"])
                     
                     if existente:
-                        # Atualizar preço
-                        db.atualizar_preco(existente["id"], prod_data["preco"])
-                        total_atualizados += 1
+                        db.atualizar_produto_completo(
+                            existente["id"],
+                            preco=prod_data["preco"],
+                            preco_original=prod_data.get("preco_original"),
+                            percentual_desconto=prod_data.get("percentual_desconto"),
+                            imagem_url=prod_data.get("imagem_url")
+                        )
                     else:
                         # Criar novo
                         produto = Produto(

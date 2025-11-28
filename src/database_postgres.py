@@ -289,6 +289,41 @@ class DatabasePostgres:
         finally:
             self.release_connection(conn)
     
+    def atualizar_produto_completo(self, produto_id: int, preco: float, 
+                                   preco_original: Optional[float] = None,
+                                   percentual_desconto: Optional[float] = None,
+                                   imagem_url: Optional[str] = None):
+        """Atualiza todos os campos do produto e cria histórico"""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Atualizar todos os campos do produto
+            cursor.execute("""
+                UPDATE produtos 
+                SET preco_atual = %s, 
+                    preco_original = %s,
+                    percentual_desconto = %s,
+                    imagem_url = %s,
+                    ultima_atualizacao = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (preco, preco_original, percentual_desconto, imagem_url, produto_id))
+            
+            # Adicionar ao histórico
+            cursor.execute("""
+                INSERT INTO precos_historico (produto_id, preco)
+                VALUES (%s, %s)
+            """, (produto_id, preco))
+            
+            conn.commit()
+            logger.info(f"🔄 Produto ID {produto_id} atualizado completamente: R$ {preco}")
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"❌ Erro ao atualizar produto completo: {e}")
+        finally:
+            self.release_connection(conn)
+    
     def obter_todos_produtos(self, limite: int = 1000) -> List[Dict]:
         """Obtém todos os produtos com limite"""
         conn = self.get_connection()
