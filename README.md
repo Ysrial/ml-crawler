@@ -1,55 +1,99 @@
 # ML Crawler 🕷️
 
-Um web scraper poderoso e eficiente para extrair dados de produtos do Mercado Livre Brasil com suporte a **paginação automática**.
+Um sistema completo de monitoramento de preços do Mercado Livre Brasil com **scraping automático**, **banco de dados PostgreSQL**, **dashboard interativo** e **agendamento inteligente**.
 
 ## 📋 Descrição
 
-ML Crawler é uma ferramenta desenvolvida em Python que permite coletar informações de produtos (nome, preço e link) diretamente do Mercado Livre. Ideal para análise de preços, pesquisa de mercado, comparação de produtos e estudo de web scraping.
+ML Crawler é uma plataforma robusta desenvolvida em Python que permite coletar, armazenar e monitorar informações de produtos do Mercado Livre em tempo real. Ideal para análise de preços, pesquisa de mercado, acompanhamento de tendências e identificação de oportunidades de compra.
 
 **Funcionalidades principais:**
-- ✅ Extração automática de dados de produtos
-- ✅ Suporte a paginação (múltiplas páginas)
-- ✅ Detecção dinâmica de seletores CSS
-- ✅ Exportação em JSON
-- ✅ Tratamento robusto de erros
-- ✅ Logs informativos em tempo real
+- ✅ **Scraping inteligente** com detecção automática de layouts
+- ✅ **Parsing robusto de preços** (suporta formatos BR e US)
+- ✅ **Banco de dados PostgreSQL** com histórico completo
+- ✅ **Dashboard interativo** com visualização em cards
+- ✅ **Agendamento automático** via Prefect
+- ✅ **Suporte a 22 categorias** de produtos
+- ✅ **Atualização incremental** de produtos existentes
+- ✅ **Scripts de limpeza** para manutenção automática
+- ✅ **Gráficos de tendência** de preços
+- ✅ **Detecção de descontos** e economia
 
 ## 🚀 Quick Start
 
 ### Pré-requisitos
 
-- Python 3.7+
+- Python 3.9+
+- Docker e Docker Compose
 - pip (gerenciador de pacotes Python)
 
 ### Instalação
 
 1. Clone o repositório:
 ```bash
-git clone <seu-repositório>
+git clone https://github.com/Ysrial/ml-crawler.git
 cd ml-crawler
 ```
 
-2. Instale as dependências:
+2. Crie e ative o ambiente virtual:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# ou
+.venv\Scripts\activate  # Windows
+```
+
+3. Instale as dependências:
 ```bash
 pip install -r requirements.txt
 ```
 
-### Uso Básico
+4. Configure as variáveis de ambiente:
+```bash
+cp .env.example .env
+# Edite .env com suas configurações
+```
 
-Execute o script com uma URL do Mercado Livre:
+5. Inicie o banco de dados PostgreSQL:
+```bash
+docker compose up -d
+```
+
+6. Inicialize o banco de dados:
+```bash
+python3 -c "from src.database_postgres import get_database; get_database().initialize_db()"
+```
+
+### Uso
+
+#### 1. Dashboard Interativo (Recomendado)
+
+Visualize produtos e tendências de preços em tempo real:
 
 ```bash
-# Scraping da URL padrão
-python -m src.main
+streamlit run app.py
+```
 
-# Scraping com URL específica
-python -m src.main "https://lista.mercadolivre.com.br/celular"
+Acesse: `http://localhost:8501`
 
-# Com limite de produtos (ex: 100 produtos)
-python -m src.main "https://lista.mercadolivre.com.br/celular" 100
+#### 2. Scraping Manual
 
-# Com limite de produtos E páginas (ex: 100 produtos, máximo 5 páginas)
-python -m src.main "https://lista.mercadolivre.com.br/celular" 100 5
+Execute coleta de dados para todas as categorias:
+
+```bash
+./run_tasks.sh
+```
+
+Ou para uma categoria específica:
+
+```bash
+python3 -m src.main "https://lista.mercadolivre.com.br/celular"
+```
+
+#### 3. Scripts de Manutenção
+
+**Remover produtos desatualizados (>5 dias):**
+```bash
+python3 scripts/cleanup_old_products.py --dias 5
 ```
 
 ## 📦 Estrutura do Projeto
@@ -57,108 +101,161 @@ python -m src.main "https://lista.mercadolivre.com.br/celular" 100 5
 ```
 ml-crawler/
 ├── src/
-│   ├── main.py          # Ponto de entrada da aplicação
-│   ├── scraper.py       # Lógica de scraping e paginação
-│   └── utils.py         # Funções utilitárias
-├── produtos.json        # Arquivo de saída com produtos extraídos
-├── requirements.txt     # Dependências do projeto
-└── README.md           # Este arquivo
+│   ├── main.py              # Ponto de entrada (scraping manual)
+│   ├── scraper.py           # Lógica de scraping e paginação
+│   ├── database_postgres.py # Gerenciamento do PostgreSQL
+│   ├── models.py            # Modelos de dados (Pydantic)
+│   ├── tasks.py             # Agendamento com Prefect
+│   ├── config.py            # Configurações e categorias
+│   └── utils.py             # Funções utilitárias
+├── scripts/
+│   └── cleanup_old_products.py    # Remove produtos desatualizados
+├── app.py                   # Dashboard Streamlit
+├── docker-compose.yml       # Configuração do PostgreSQL
+├── requirements.txt         # Dependências do projeto
+├── .env.example            # Exemplo de variáveis de ambiente
+└── README.md               # Este arquivo
 ```
 
-## 🔧 Componentes
+## 🔧 Componentes Principais
 
-### `main.py`
-Orquestra a execução do scraper. Recebe parâmetros via linha de comando:
-- `URL`: URL do Mercado Livre (opcional)
-- `max_produtos`: Número máximo de produtos (opcional)
-- `max_paginas`: Número máximo de páginas (opcional, padrão: 10)
+### Dashboard (`app.py`)
+Interface web interativa construída com Streamlit:
+- **Visualização em cards** de produtos
+- **Gráficos de tendência** de preços (últimos 30 dias)
+- **Filtros por categoria** (22 categorias disponíveis)
+- **Busca de produtos** por nome
+- **Badges de economia** mostrando valor economizado
+- **Histórico de preços** expansível por produto
 
-### `scraper.py`
-Contém as principais funções de scraping:
+### Scraper (`scraper.py`)
+Motor de coleta de dados com múltiplas estratégias:
 
-- **`fetch_html(url: str) -> str`**
-  - Faz requisição HTTP à URL
-  - Retorna o HTML da página
-  - Exibe status HTTP
+- **`extract_products(html, limit)`**: Extração inteligente com fallbacks
+  - Estratégia A: `.andes-money-amount__fraction` (layout moderno)
+  - Estratégia B: `aria-label` com "Agora:"
+  - Estratégia C: `.andes-money-amount--cents-superscript`
+  - Estratégia D: `.price-tag-fraction` (layout clássico)
 
-- **`detect_selector(html: str) -> str`**
-  - Detecta automaticamente qual seletor CSS usar
-  - Suporta múltiplos layouts do Mercado Livre
-  - Retorna None se nenhum seletor for encontrado
+- **`scrape_all_pages(base_url, categoria, max_products, max_pages)`**:
+  - Coleta até 200 produtos por categoria (4 páginas)
+  - Atualização incremental de produtos existentes
+  - Detecção automática de produtos duplicados
 
-- **`extract_products(html: str, limit: int) -> list`**
-  - Extrai produtos do HTML
-  - Limita quantidade de produtos por página
-  - Retorna lista com nome, preço e link
+### Banco de Dados (`database_postgres.py`)
+Gerenciamento completo do PostgreSQL:
 
-- **`add_pagination_to_url(url: str, page: int) -> str`**
-  - Adiciona/atualiza parâmetro `_Paging` na URL
-  - Preserva outros parâmetros existentes
-  - Retorna URL paginada
+**Tabelas:**
+- `produtos`: Dados atuais dos produtos
+- `precos_historico`: Histórico completo de preços
+- `coletas`: Logs de execução do scraper
 
-- **`scrape_all_pages(base_url: str, max_products: int, max_pages: int) -> list`**
-  - Itera sobre múltiplas páginas
-  - Para automaticamente quando não há mais produtos
-  - Respeita limites de produtos e páginas
+**Principais funções:**
+- `adicionar_produto()`: Insere novo produto
+- `atualizar_produto()`: Atualiza todos os campos
+- `obter_historico_preco()`: Retorna tendências
+- `obter_estatisticas_produto()`: Análise completa
 
-### `utils.py`
-Utilitários para processamento de dados:
+### Agendamento (`tasks.py`)
+Execução automática via Prefect:
+- Coleta a cada 10 minutos (configurável)
+- Processamento paralelo de categorias
+- Logs estruturados de execução
+- Retry automático em caso de falhas
 
-- **`text_to_price(s: str) -> float`**
-  - Converte texto em preço numérico
-  - Remove caracteres especiais
-  - Trata vírgulas e pontos corretamente
+### Utilitários (`utils.py`)
 
-## 📊 Formato de Saída
+- **`text_to_price(s: str) -> float`**: Parsing inteligente de preços
+  - Suporta formato brasileiro: `1.234,56`
+  - Suporta formato americano: `1,234.56`
+  - Detecta automaticamente separadores decimais
+  - Trata casos ambíguos: `249.90` → `249.90` (não `24990`)
 
-O arquivo `produtos.json` gerado contém:
+## 🎯 Categorias Suportadas
 
+O sistema monitora **22 categorias** de produtos:
+
+**Eletrônicos e Tecnologia:**
+- Celulares, Notebooks, Computadores Desktop
+- Placas-Mãe, Placas de Vídeo, Processadores
+- Memória RAM, Fontes, Coolers, Monitores
+- Mouse, Teclados, Headsets, Microfones
+- Webcams, Caixas de Som
+
+**Outros:**
+- Eletrodomésticos, Roupas, Cosméticos
+- Móveis, Produtos de Higiene
+
+## 📊 Estrutura de Dados
+
+### Banco de Dados PostgreSQL
+
+**Tabela `produtos`:**
+```sql
+id                  SERIAL PRIMARY KEY
+nome                TEXT NOT NULL
+link                TEXT NOT NULL UNIQUE
+categoria           TEXT NOT NULL
+produto_id_ml       TEXT (ID do Mercado Livre)
+preco_atual         NUMERIC(10, 2)
+preco_original      NUMERIC(10, 2)
+percentual_desconto NUMERIC(5, 2)
+imagem_url          TEXT
+primeira_coleta     TIMESTAMP
+ultima_atualizacao  TIMESTAMP
+```
+
+**Tabela `precos_historico`:**
+```sql
+id          SERIAL PRIMARY KEY
+produto_id  INTEGER (FK para produtos)
+preco       NUMERIC(10, 2)
+data        TIMESTAMP
+```
+
+**Exemplo de dados:**
 ```json
-[
-  {
-    "nome": "Samsung Galaxy A12 128GB",
-    "preco": 599.99,
-    "link": "https://produto.mercadolivre.com.br/..."
-  },
-  {
-    "nome": "iPhone 12 64GB",
-    "preco": 3299.00,
-    "link": "https://produto.mercadolivre.com.br/..."
-  }
-]
+{
+  "id": 1,
+  "nome": "Samsung Galaxy A54 5G 128GB",
+  "preco_atual": 1499.00,
+  "preco_original": 2199.00,
+  "percentual_desconto": 31.8,
+  "categoria": "celular",
+  "imagem_url": "https://http2.mlstatic.com/...",
+  "produto_id_ml": "MLB3583764605",
+  "link": "https://produto.mercadolivre.com.br/...",
+  "primeira_coleta": "2025-11-22T10:30:00",
+  "ultima_atualizacao": "2025-11-29T13:00:00"
+}
 ```
 
-## 🎯 Exemplos de Uso
+## 🛠️ Tecnologias Utilizadas
 
-### Exemplo 1: Buscar Todos os Celulares (sem limites)
-```bash
-python -m src.main "https://lista.mercadolivre.com.br/celular"
-```
+**Core:**
+- **Python 3.9+**: Linguagem principal
+- **PostgreSQL**: Banco de dados relacional
+- **Docker**: Containerização do banco
 
-### Exemplo 2: Primeiros 50 produtos de Notebooks
-```bash
-python -m src.main "https://lista.mercadolivre.com.br/notebook" 50
-```
+**Web Scraping:**
+- **Requests**: Requisições HTTP
+- **BeautifulSoup4**: Parsing HTML
+- **lxml**: Parser XML/HTML de alta performance
 
-### Exemplo 3: Análise de Laptops (3 páginas, máximo 150 produtos)
-```bash
-python -m src.main "https://lista.mercadolivre.com.br/laptop" 150 3
-```
+**Interface e Visualização:**
+- **Streamlit**: Dashboard interativo
+- **Plotly**: Gráficos interativos
+- **Pandas**: Manipulação de dados
 
-### Exemplo 4: Busca com filtros do Mercado Livre
-```bash
-python -m src.main "https://lista.mercadolivre.com.br/smartphone/_PriceRange_100000-500000" 100 5
-```
+**Agendamento e Orquestração:**
+- **Prefect**: Workflow orchestration
+- **APScheduler**: Agendamento de tarefas
 
-## 🛠️ Requisitos
+**Validação e Modelos:**
+- **Pydantic**: Validação de dados
+- **python-dotenv**: Gerenciamento de variáveis de ambiente
 
-Veja `requirements.txt`:
-
-```
-requests==2.31.0      # Requisições HTTP
-beautifulsoup4==4.12.2 # Parsing HTML
-lxml==4.9.3           # Parser XML/HTML rápido
-```
+Veja `requirements.txt` para lista completa de dependências.
 
 ## ⚠️ Notas Importantes
 
@@ -178,91 +275,113 @@ lxml==4.9.3           # Parser XML/HTML rápido
 ### Problema: Preços não estão sendo extraídos
 **Solução:** Verifique se a função `text_to_price()` está processando corretamente o formato
 
-## 📈 Melhorias Futuras
+## 📈 Features Implementadas
 
-### Fase 1: Monitoramento de Preços
-- [ ] **Agendamento automático (APScheduler)**
-  - Executar scraping em intervalos regulares (ex: a cada 6 horas)
+### ✅ Fase 1: Monitoramento de Preços (Completo)
+- [x] **Agendamento automático (Prefect)**
+  - Execução a cada 10 minutos (configurável)
   - Histórico de coletas automático
-  - Logs de execução
+  - Logs estruturados de execução
+  - Retry automático em falhas
 
-- [ ] **Banco de dados (SQLite/PostgreSQL)**
-  - Armazenar histórico de preços
-  - Rastrear mudanças de preço por produto
-  - Schema: `produtos`, `precos_historico`, `buscas`
+- [x] **Banco de dados PostgreSQL**
+  - Armazenamento de histórico completo de preços
+  - Rastreamento de mudanças por produto
+  - Schema otimizado: `produtos`, `precos_historico`, `coletas`
+  - Connection pooling para performance
 
-- [ ] **Monitoramento de mudanças de preço**
-  - Alertas quando preço cai/sobe
+- [x] **Monitoramento de mudanças de preço**
+  - Detecção automática de variações
   - Comparação com preço anterior
-  - Relatórios de variação percentual
+  - Cálculo de variação percentual
 
-### Fase 2: Análise e Visualização
-- [ ] **Interface gráfica (Streamlit)**
-  - Dashboard com gráficos de preços
-  - Filtros por categoria/produto
-  - Visualização de tendências
+### ✅ Fase 2: Análise e Visualização (Completo)
+- [x] **Interface gráfica (Streamlit)**
+  - Dashboard moderno com cards visuais
+  - Gráficos interativos de tendências
+  - Filtros por categoria (22 categorias)
+  - Busca de produtos por nome
+  - Badges de economia mostrando valor economizado
 
-- [ ] **Exportação de dados**
-  - CSV e Excel com histórico completo
-  - Gráficos em PDF
-  - Relatórios automáticos por email
-
-### Fase 3: Dados e Validação
-- [ ] **Validação de dados (Pydantic)**
+- [x] **Validação de dados (Pydantic)**
   - Schema de produto validado
-  - Tratamento de tipos de dados
+  - Tratamento robusto de tipos
   - Mensagens de erro claras
 
-- [ ] **Análise de preços**
-  - Preço mínimo/máximo/médio
-  - Detecção de outliers
-  - Recomendações de compra
+- [x] **Análise de preços**
+  - Preço mínimo/máximo/médio por produto
+  - Histórico de 30 dias
+  - Detecção de descontos
 
+### 🚀 Próximas Melhorias
 
-### Roadmap de Implementação
+**v2.1** (Curto Prazo):
+- [ ] Notificações por email/Telegram quando preço cai
+- [ ] Exportação de relatórios em CSV/Excel
+- [ ] Alertas personalizados por produto
+- [ ] Comparação de preços entre vendedores
 
-**v1.1** (Próxima):
-```
-- Banco de dados SQLite
-- Histórico de preços
-- Validação com Pydantic
-```
+**v2.2** (Médio Prazo):
+- [ ] API REST (FastAPI) para acesso programático
+- [ ] Autenticação e multi-usuário
+- [ ] Watchlist personalizada por usuário
+- [ ] Recomendações de compra baseadas em ML
 
-**v1.2**:
-```
-- APScheduler para execução automática
-- Alertas de mudança de preço
-- Logs estruturados
-```
-
-**v1.3**:
-```
-- Dashboard Streamlit básico
-- Gráficos de tendências
-- Exportação CSV
-```
-
-**v2.0**:
-```
-- PostgreSQL para escala
-- API REST (FastAPI)
-- Notificações por email/Telegram
-- Dashboard avançado
-```
+**v3.0** (Longo Prazo):
+- [ ] Análise de sentimento de reviews
+- [ ] Predição de tendências de preço
+- [ ] Integração com outros marketplaces
+- [ ] App mobile (React Native)
 
 ## 📝 Licença
 
 Este projeto é fornecido como está para fins educacionais e de portfólio.
 
-## 💡 Aprendizados
+## 💡 Aprendizados e Tecnologias
 
-Este projeto demonstra conhecimento em:
-- **Web Scraping**: Técnicas de extração de dados da web
-- **Parsing HTML**: Uso de BeautifulSoup e XPath
-- **Programação Python**: Modularização, tratamento de erros
-- **APIs HTTP**: Requisições e headers
-- **Processamento de Dados**: Limpeza e formatação
-- **Estrutura de Projetos**: Organização e boas práticas
+Este projeto demonstra conhecimento avançado em:
+
+**Web Scraping e Parsing:**
+- Técnicas robustas de extração de dados
+- Múltiplas estratégias de fallback
+- Parsing inteligente de preços (BR/US formats)
+- Detecção dinâmica de layouts
+
+**Banco de Dados:**
+- PostgreSQL com connection pooling
+- Schema design otimizado
+- Índices para performance
+- Migrations e versionamento
+
+**Arquitetura e Padrões:**
+- Separação de responsabilidades (MVC-like)
+- Modelos validados com Pydantic
+- Configuração centralizada
+- Logging estruturado
+
+**Orquestração e Automação:**
+- Workflow orchestration com Prefect
+- Agendamento inteligente
+- Retry policies e error handling
+- Task dependencies
+
+**Interface e Visualização:**
+- Dashboard interativo com Streamlit
+- Gráficos responsivos com Plotly
+- UX/UI moderno com cards visuais
+- Real-time data updates
+
+**DevOps e Infraestrutura:**
+- Docker e Docker Compose
+- Variáveis de ambiente (.env)
+- Scripts de manutenção automatizados
+- Versionamento com Git (branches: main, develop, selenium)
+
+**Boas Práticas:**
+- Código modular e reutilizável
+- Documentação completa
+- Tratamento robusto de erros
+- Type hints e validação de dados
 
 ## 👤 Autor
 
