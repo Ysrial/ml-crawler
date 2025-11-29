@@ -239,8 +239,14 @@ def scrape_all_pages(base_url: str, categoria: str, max_products: int = None, ma
                         existente = db.obter_produto_por_link(prod_data["link"])
                     
                     if existente:
-                        # Atualizar preço
-                        db.atualizar_preco(existente["id"], prod_data["preco"])
+                        # Atualizar produto com todos os campos
+                        db.atualizar_produto(
+                            existente["id"], 
+                            prod_data["preco"],
+                            preco_original=prod_data.get("preco_original"),
+                            percentual_desconto=prod_data.get("percentual_desconto"),
+                            imagem_url=prod_data.get("imagem_url")
+                        )
                         total_atualizados += 1
                     else:
                         # Criar novo

@@ -63,20 +63,7 @@ with st.sidebar:
         "Selecione uma categoria",
         categorias
     )
-    
-    dias_historico = st.slider(
-        "Histórico de dias",
-        min_value=7,
-        max_value=90,
-        value=30,
-        step=7
-    )
-    
-    st.markdown("---")
-    st.info(
-        "💡 **Dica:** Acompanhe as variações de preço ao longo do tempo "
-        "para identificar as melhores oportunidades de compra!"
-    )
+
 
 # ========== CONTEÚDO PRINCIPAL ==========
 
@@ -153,7 +140,7 @@ with col1:
     busca = st.text_input("🔍 Buscar produto", "")
 
 with col2:
-    limite = st.slider("Mostrar", 5, 50, 10)
+    limite = st.slider("Mostrar", 5, 50, 12)
 
 # Filtrar produtos
 if busca:
@@ -164,94 +151,149 @@ if busca:
 else:
     produtos_filtrados = produtos[:limite]
 
-# Exibir produtos
+# CSS para cards
+st.markdown("""
+    <style>
+    .product-card {
+        background: white;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+        border: 1px solid #e0e0e0;
+    }
+    .product-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+    .product-image {
+        width: 100%;
+        height: 180px;
+        object-fit: contain;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        background: #f5f5f5;
+    }
+    .product-name {
+        font-size: 14px;
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 8px;
+        min-height: 40px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .price-current {
+        font-size: 28px;
+        font-weight: 700;
+        color: #00a650;
+        margin: 8px 0;
+    }
+    .price-original {
+        font-size: 14px;
+        color: #999;
+        text-decoration: line-through;
+        margin-bottom: 4px;
+    }
+    .discount-badge {
+        background: #ff6b6b;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        display: inline-block;
+        margin-top: 8px;
+    }
+    .savings-badge {
+        background: #00a650;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        display: inline-block;
+        margin-top: 8px;
+    }
+    .product-link {
+        display: block;
+        text-align: center;
+        background: #3483fa;
+        color: white !important;
+        padding: 8px 16px;
+        border-radius: 6px;
+        text-decoration: none;
+        margin-top: 12px;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+    .product-link:hover {
+        background: #2968c8;
+        text-decoration: none;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Exibir produtos em grid de cards
 if produtos_filtrados:
-    for i, produto in enumerate(produtos_filtrados):
-        try:
-            stats = db.obter_estatisticas_produto(produto["id"])
-            
-            # Título com badge de desconto
-            titulo = f"📦 {produto['nome'][:70]}"
-            if produto.get('percentual_desconto'):
-                titulo += f" 🏷️ {produto['percentual_desconto']:.0f}% OFF"
-            
-            with st.expander(titulo):
-                # Layout com imagem
-                if produto.get('imagem_url'):
-                    col_img, col_info = st.columns([1, 3])
-                    with col_img:
-                        try:
-                            st.image(produto['imagem_url'], width=120, caption="Produto")
-                        except:
-                            st.write("🖼️ Sem imagem")
-                    info_container = col_info
-                else:
-                    info_container = st
-                
-                with info_container:
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        # Preço atual e original
-                        if produto.get('preco_original') and produto.get('percentual_desconto'):
-                            st.markdown(f"**Preço Atual**")
-                            st.markdown(f"# R$ {produto['preco_atual']:.2f}")
-                            st.markdown(f"~~R$ {produto['preco_original']:.2f}~~")
-                        else:
-                            st.metric("Preço Atual", f"R$ {produto['preco_atual']:.2f}")
-                    
-                    with col2:
-                        if stats and stats["variacao_percentual"] != 0:
-                            cor = "🔴" if stats["variacao_percentual"] > 0 else "🟢"
-                            st.metric(
-                                "Variação Histórica",
-                                f"{stats['variacao_percentual']:.1f}%",
-                                help=f"Desde primeira coleta"
-                            )
-                        elif produto.get('percentual_desconto'):
-                            st.metric(
-                                "Desconto Atual",
-                                f"{produto['percentual_desconto']:.1f}%",
-                                help="Desconto aplicado no preço"
-                            )
-                        else:
-                            st.metric("Variação", "0%")
-                    
-                    with col3:
-                        if stats:
-                            st.metric("Mínimo Histórico", f"R$ {stats['preco_minimo']:.2f}")
-                    
-                    with col4:
-                        if stats:
-                            st.metric("Máximo Histórico", f"R$ {stats['preco_maximo']:.2f}")
-                
-                # Histórico
-                if stats:
-                    historico = db.obter_historico_preco(produto["id"], dias_historico)
-                    
-                    if historico:
-                        df = pd.DataFrame(historico)
-                        
-                        # Gráfico
-                        fig = px.line(
-                            df,
-                            x="data",
-                            y="preco",
-                            title="Histórico de Preço",
-                            labels={
-                                "preco": "Preço (R$)",
-                                "data": "Data"
-                            },
-                            markers=True
-                        )
-                        fig.update_layout(height=300, showlegend=False)
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                # Link do produto
-                st.markdown(f"[🔗 Abrir no Mercado Livre]({produto['link']})")
+    # Criar grid de 3 colunas
+    for i in range(0, len(produtos_filtrados), 3):
+        cols = st.columns(3)
         
-        except Exception as e:
-            st.warning(f"⚠️ Erro ao carregar dados do produto {i+1}")
+        for j, col in enumerate(cols):
+            if i + j < len(produtos_filtrados):
+                produto = produtos_filtrados[i + j]
+                
+                with col:
+                    # Imagem do produto
+                    if produto.get('imagem_url'):
+                        st.image(produto['imagem_url'], use_column_width=True)
+                    else:
+                        st.markdown('<div style="height: 180px; background: #f5f5f5; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">🖼️ Sem imagem</div>', unsafe_allow_html=True)
+                    
+                    # Nome do produto (truncado)
+                    nome_truncado = produto['nome'][:60] + "..." if len(produto['nome']) > 60 else produto['nome']
+                    st.markdown(f"**{nome_truncado}**")
+                    
+                    # Preço atual
+                    st.markdown(f"<div style='font-size: 24px; font-weight: 700; color: #00a650; margin: 8px 0;'>R$ {produto['preco_atual']:.2f}</div>", unsafe_allow_html=True)
+                    
+                    # Preço original e economia
+                    if produto.get('preco_original') and produto['preco_original'] > produto['preco_atual']:
+                        economia = produto['preco_original'] - produto['preco_atual']
+                        st.markdown(f"<div style='font-size: 13px; color: #999; text-decoration: line-through;'>R$ {produto['preco_original']:.2f}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='background: #00a650; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; margin-top: 4px;'>💰 Economize R$ {economia:.2f}</div>", unsafe_allow_html=True)
+                    
+                    # Botão de link
+                    st.markdown(f"<a href='{produto['link']}' target='_blank' style='display: block; text-align: center; background: #3483fa; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-top: 12px; font-weight: 500;'>Ver Produto</a>", unsafe_allow_html=True)
+                    
+                    # Expandir para ver histórico
+                    with st.expander("📊 Ver histórico de preços"):
+                        stats = db.obter_estatisticas_produto(produto["id"])
+                        if stats:
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Mínimo", f"R$ {stats['preco_minimo']:.2f}")
+                            with col2:
+                                st.metric("Máximo", f"R$ {stats['preco_maximo']:.2f}")
+                            
+                            historico = db.obter_historico_preco(produto["id"], 30)
+                            if historico:
+                                df = pd.DataFrame(historico)
+                                fig = px.line(
+                                    df,
+                                    x="data",
+                                    y="preco",
+                                    labels={"preco": "Preço (R$)", "data": "Data"},
+                                    markers=True
+                                )
+                                fig.update_layout(height=250, showlegend=False)
+                                st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.markdown("---")
 
 else:
     st.info("Nenhum produto encontrado com esses critérios.")

@@ -262,17 +262,42 @@ class DatabasePostgres:
             self.release_connection(conn)
     
     def atualizar_preco(self, produto_id: int, novo_preco: float):
-        """Atualiza preço atual e cria histórico"""
+        """Atualiza preço atual e cria histórico (mantido para compatibilidade)"""
+        self.atualizar_produto(produto_id, novo_preco)
+    
+    def atualizar_produto(self, produto_id: int, novo_preco: float, 
+                         preco_original: float = None, 
+                         percentual_desconto: float = None, 
+                         imagem_url: str = None):
+        """Atualiza todos os campos do produto e cria histórico"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             
-            # Atualizar preço atual
-            cursor.execute("""
+            # Construir query dinamicamente baseado nos campos fornecidos
+            updates = ["preco_atual = %s", "ultima_atualizacao = CURRENT_TIMESTAMP"]
+            params = [novo_preco]
+            
+            if preco_original is not None:
+                updates.append("preco_original = %s")
+                params.append(preco_original)
+            
+            if percentual_desconto is not None:
+                updates.append("percentual_desconto = %s")
+                params.append(percentual_desconto)
+            
+            if imagem_url is not None:
+                updates.append("imagem_url = %s")
+                params.append(imagem_url)
+            
+            params.append(produto_id)
+            
+            # Atualizar produto
+            cursor.execute(f"""
                 UPDATE produtos 
-                SET preco_atual = %s, ultima_atualizacao = CURRENT_TIMESTAMP
+                SET {', '.join(updates)}
                 WHERE id = %s
-            """, (novo_preco, produto_id))
+            """, tuple(params))
             
             # Adicionar ao histórico
             cursor.execute("""
@@ -281,11 +306,11 @@ class DatabasePostgres:
             """, (produto_id, novo_preco))
             
             conn.commit()
-            logger.info(f"💰 Preço atualizado para produto ID {produto_id}: R$ {novo_preco}")
+            logger.info(f"💰 Produto ID {produto_id} atualizado: R$ {novo_preco}")
             
         except Exception as e:
             conn.rollback()
-            logger.error(f"❌ Erro ao atualizar preço: {e}")
+            logger.error(f"❌ Erro ao atualizar produto: {e}")
         finally:
             self.release_connection(conn)
     
