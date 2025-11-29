@@ -97,6 +97,77 @@ except Exception as e:
 # ========== MÉTRICAS PRINCIPAIS ==========
 st.markdown(f"## 📈 Análise: {categoria_selecionada.upper()}")
 
+# ========== CARD DE STATUS DE COLETA ==========
+try:
+    # Buscar últimas coletas
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM coletas 
+        WHERE categoria = %s 
+        ORDER BY data_inicio DESC 
+        LIMIT 5
+    """, (categoria_selecionada,))
+    coletas_recentes = cursor.fetchall()
+    cursor.close()
+    db.release_connection(conn)
+    
+    if coletas_recentes:
+        # Como usamos cursor simples, convertemos para dict
+        # Colunas: id, categoria, data_inicio, data_fim, total_produtos, total_novos, total_atualizados, status, mensagem_erro
+        ultima_coleta_raw = coletas_recentes[0]
+        ultima_coleta = {
+            'id': ultima_coleta_raw[0],
+            'categoria': ultima_coleta_raw[1],
+            'data_inicio': ultima_coleta_raw[2],
+            'data_fim': ultima_coleta_raw[3],
+            'total_produtos': ultima_coleta_raw[4],
+            'total_novos': ultima_coleta_raw[5] or 0,
+            'total_atualizados': ultima_coleta_raw[6] or 0,
+            'status': ultima_coleta_raw[7],
+        }
+        
+        # Card de status
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            status_icon = "✅" if ultima_coleta.get("status") == "sucesso" else "❌"
+            data_str = ultima_coleta['data_inicio'].strftime('%d/%m/%Y %H:%M') if ultima_coleta['data_inicio'] else 'N/A'
+            st.markdown(f"""
+            <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; text-align: center;">
+                <h3>{status_icon} Última Coleta</h3>
+                <p style="color: gray; font-size: 0.9em;">
+                    {data_str}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; text-align: center;">
+                <h3>📦 Novos Produtos</h3>
+                <p style="font-size: 1.5em; font-weight: bold;">
+                    {ultima_coleta.get('total_novos', 0)}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+            <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; text-align: center;">
+                <h3>🔄 Atualizados</h3>
+                <p style="font-size: 1.5em; font-weight: bold;">
+                    {ultima_coleta.get('total_atualizados', 0)}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+except Exception as e:
+    st.warning(f"⚠️ Erro ao carregar status de coleta: {e}")
+
+st.markdown("")
+
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -143,8 +214,79 @@ if relatorio["ultima_coleta"]:
 
 st.markdown("---")
 
-# ========== LISTA DE PRODUTOS ==========
-st.markdown("## 🛍️ Produtos Monitorados")
+# ========== CARD DE PRODUTOS EM DESTAQUE ==========
+st.markdown("## 🔥 Produtos em Destaque")
+
+tab1, tab2 = st.tabs(["Maiores Descontos", "Maior Variação de Preço"])
+
+with tab1:
+    # Produtos com maior desconto
+    try:
+        produtos_desconto = sorted(
+            [p for p in produtos if p.get('percentual_desconto')],
+            key=lambda x: x.get('percentual_desconto', 0),
+            reverse=True
+        )[:3]
+        
+        if produtos_desconto:
+            for i, produto in enumerate(produtos_desconto, 1):
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"""
+                    **{i}. {produto['nome'][:60]}...**
+                    - Desconto: **{produto['percentual_desconto']:.1f}%** 🏷️
+                    - De: ~~R$ {produto['preco_original']:.2f}~~ → Agora: **R$ {produto['preco_atual']:.2f}**
+                    """)
+                with col2:
+                    st.link_button("Abrir", produto['link'], use_container_width=True)
+        else:
+            st.info("Nenhum produto com desconto identificado nesta categoria.")
+    except Exception as e:
+        st.warning(f"Erro ao carregar produtos com desconto: {e}")
+
+with tab2:
+    # Produtos com maior variação de preço
+    try:
+        produtos_variacao = []
+        for produto in produtos:
+            try:
+                stats = db.obter_estatisticas_produto(produto["id"])
+                if stats and stats["variacao_percentual"] != 0:
+                    produtos_variacao.append({
+                        "nome": produto["nome"],
+                        "variacao": stats["variacao_percentual"],
+                        "preco_min": stats["preco_minimo"],
+                        "preco_max": stats["preco_maximo"],
+                        "preco_atual": stats["preco_atual"],
+                        "link": produto["link"]
+                    })
+            except:
+                pass
+        
+        if produtos_variacao:
+            produtos_variacao_top = sorted(
+                produtos_variacao,
+                key=lambda x: abs(x["variacao"]),
+                reverse=True
+            )[:3]
+            
+            for i, produto in enumerate(produtos_variacao_top, 1):
+                cor = "🔴" if produto["variacao"] > 0 else "🟢"
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"""
+                    **{i}. {produto['nome'][:60]}...**
+                    - Variação: {cor} **{produto['variacao']:+.1f}%**
+                    - Mín: R$ {produto['preco_min']:.2f} | Máx: R$ {produto['preco_max']:.2f} | Agora: R$ {produto['preco_atual']:.2f}
+                    """)
+                with col2:
+                    st.link_button("Abrir", produto['link'], use_container_width=True)
+        else:
+            st.info("Sem histórico de variação de preço para esta categoria.")
+    except Exception as e:
+        st.warning(f"Erro ao carregar variações: {e}")
+
+st.markdown("---")
 
 # Filtro e busca
 col1, col2 = st.columns([3, 1])

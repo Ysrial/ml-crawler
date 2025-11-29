@@ -3,15 +3,35 @@ from bs4 import BeautifulSoup
 from .utils import text_to_price
 from .models import Produto
 from .database_postgres import get_database
+from .config import USE_PROXY, PROXY_LIST, SINGLE_PROXY, USER_AGENTS, DELAY_BETWEEN_PAGES
+from .request_handler import RequestHandler
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import re
+import random
+import time
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
+# Instância global do handler
+_request_handler = None
+
+def get_request_handler():
+    """Obtém ou cria instância global de RequestHandler"""
+    global _request_handler
+    if _request_handler is None:
+        from . import config
+        _request_handler = RequestHandler(config)
+    return _request_handler
+
 def fetch_html(url: str):
-    resp = requests.get(url, headers=HEADERS, timeout=10)
-    print(f"[HTTP] {resp.status_code} - {url}")
-    return resp.text
+    """Faz requisição com múltiplas estratégias de bypass"""
+    handler = get_request_handler()
+    html = handler.fetch(url)
+    
+    if html is None:
+        raise Exception(f"Falha ao buscar {url} após todas as estratégias")
+    
+    return html
 
 
 def detect_selector(html: str):
@@ -84,8 +104,18 @@ def extract_products(html: str, limit: int = 10):
                     print("debug: preço via andes_fractions (>=2) — original then atual")
                 else:
                     # só uma fraction — pode ser o preço atual ou o original dependendo do layout
-                    preco = text_to_price(andes_fractions[0].get_text(strip=True))
-                    print("debug: preço via andes_fractions (1) — assumindo atual")
+                    # Verificar se está dentro de elemento com classe "riscado" ou "original"
+                    parent = andes_fractions[0].parent
+                    parent_classes = parent.get("class", [])
+                    parent_html = str(parent)
+                    
+                    # Se tiver strike-through ou original no pai, é preco_original
+                    if any(x in str(parent_classes).lower() for x in ["strike", "original", "subprice"]):
+                        preco_original = text_to_price(andes_fractions[0].get_text(strip=True))
+                        print("debug: preço via andes_fractions (1) — detectado como ORIGINAL")
+                    else:
+                        preco = text_to_price(andes_fractions[0].get_text(strip=True))
+                        print("debug: preço via andes_fractions (1) — assumindo ATUAL")
             except Exception as e:
                 print(f"debug: erro ao parsear andes_fractions: {e}")
 
@@ -266,6 +296,11 @@ def scrape_all_pages(base_url: str, categoria: str, max_products: int = None, ma
                 
                 if max_products and total_produtos >= max_products:
                     break
+                
+                # Delay entre páginas
+                if page < max_pages:
+                    print(f"⏳ Aguardando {DELAY_BETWEEN_PAGES}s antes da próxima página...")
+                    time.sleep(DELAY_BETWEEN_PAGES)
                     
             except Exception as e:
                 print(f"❌ Erro ao fazer scraping da página {page}: {e}")

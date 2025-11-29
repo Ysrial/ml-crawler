@@ -1,6 +1,12 @@
-from .scraper import scrape_all_pages
-from urllib.parse import urlparse
 import sys
+from pathlib import Path
+
+# Adicionar diretório raiz ao path para imports
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.scraper import scrape_all_pages
+from urllib.parse import urlparse
 
 def extrair_categoria_da_url(url: str) -> str:
     """Extrai a categoria da URL do Mercado Livre."""

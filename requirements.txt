@@ -17,3 +17,8 @@ psycopg2-binary==2.9.9   # Driver PostgreSQL
 streamlit==1.32.2        # Dashboard web
 pandas==2.1.4            # Análise de dados
 plotly==5.18.0           # Gráficos interativos
+
+# ========== BYPASS E SCRAPING AVANÇADO ==========
+cloudscraper==1.2.71     # CloudFlare bypass (recomendado)
+selenium==4.15.2         # Headless browser (opcional, para último recurso)
+# playwright==1.40.0     # Alternativa ao Selenium (descomente se preferir)
