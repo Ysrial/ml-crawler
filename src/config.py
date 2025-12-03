@@ -157,6 +157,13 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
+# ========== DELAYS PARA EVITAR SOBRECARGA ==========
+# Delay entre cada requisição de página (em segundos)
+DELAY_BETWEEN_REQUESTS = 5  # 2 segundos entre cada página
+
+# Delay entre categorias diferentes (em segundos)
+DELAY_BETWEEN_CATEGORIES = 10  # 5 segundos entre cada categoria
+
 # ========== CONFIGURAÇÕES DE LOGGING ==========
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 LOG_FILE = LOG_DIR / "ml_crawler.log"

@@ -5,6 +5,8 @@ from .models import Produto
 from .database_postgres import get_database
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import re
+import time
+from .config import DELAY_BETWEEN_REQUESTS
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
@@ -269,6 +271,11 @@ def scrape_all_pages(base_url: str, categoria: str, max_products: int = None, ma
                         break
                 
                 print(f"✅ {len(produtos_pagina)} produtos processados (novo: {total_novos}, atualizado: {total_atualizados})")
+                
+                # Delay entre requisições para não sobrecarregar o servidor
+                if page < max_pages:  # Não precisa esperar após a última página
+                    print(f"⏳ Aguardando {DELAY_BETWEEN_REQUESTS} segundos antes da próxima página...")
+                    time.sleep(DELAY_BETWEEN_REQUESTS)
                 
                 if max_products and total_produtos >= max_products:
                     break

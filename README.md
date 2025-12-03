@@ -9,6 +9,7 @@ ML Crawler é uma plataforma robusta desenvolvida em Python que permite coletar,
 **Funcionalidades principais:**
 - ✅ **Scraping inteligente** com detecção automática de layouts
 - ✅ **Parsing robusto de preços** (suporta formatos BR e US)
+- ✅ **Sistema de delays** para evitar sobrecarga (5s entre páginas, 10s entre categorias)
 - ✅ **Banco de dados PostgreSQL** com histórico completo
 - ✅ **Dashboard interativo** com visualização em cards
 - ✅ **Agendamento automático** via Prefect
@@ -257,12 +258,54 @@ data        TIMESTAMP
 
 Veja `requirements.txt` para lista completa de dependências.
 
+## ⚙️ Configurações de Scraping
+
+### Delays para Evitar Sobrecarga
+
+O sistema implementa **delays automáticos** entre requisições para respeitar os servidores do Mercado Livre e evitar bloqueios:
+
+**Configurações em `src/config.py`:**
+
+```python
+# Delay entre cada requisição de página (em segundos)
+DELAY_BETWEEN_REQUESTS = 5  # 5 segundos entre cada página
+
+# Delay entre categorias diferentes (em segundos)
+DELAY_BETWEEN_CATEGORIES = 10  # 10 segundos entre cada categoria
+```
+
+**Como funciona:**
+- ⏳ **Entre páginas**: Aguarda 5 segundos após processar cada página antes de buscar a próxima
+- ⏳ **Entre categorias**: Aguarda 10 segundos após finalizar uma categoria antes de iniciar a próxima
+- ✅ **Inteligente**: Não aplica delay após a última página/categoria
+
+**Exemplo de execução:**
+```
+📄 Página 1... ✅ 50 produtos processados
+⏳ Aguardando 5 segundos antes da próxima página...
+📄 Página 2... ✅ 50 produtos processados
+⏳ Aguardando 5 segundos antes da próxima página...
+...
+✅ Scraping concluído para celular
+⏳ Aguardando 10 segundos antes da próxima categoria...
+🔍 Iniciando scraping da categoria: notebook
+```
+
+**Personalizando os delays:**
+
+Você pode ajustar os valores no arquivo `src/config.py`:
+- **Aumentar**: Para ser mais conservador e evitar bloqueios (recomendado para uso intensivo)
+- **Diminuir**: Para scraping mais rápido (use com cautela, pode resultar em bloqueios)
+
+> **💡 Dica**: Os valores padrão (5s entre páginas, 10s entre categorias) são conservadores e seguros para uso regular.
+
 ## ⚠️ Notas Importantes
 
 - **Respeite o `robots.txt`**: Mercado Livre pode ter limitações para scraping automático
-- **Delays entre requisições**: Considere adicionar delays para não sobrecarregar os servidores
+- **Delays implementados**: O sistema já possui delays automáticos entre requisições (veja seção acima)
 - **Mudanças na estrutura HTML**: O site pode mudar, afetando os seletores CSS
 - **Termos de Serviço**: Verifique a viabilidade legal do seu projeto
+- **Rate limiting**: Evite executar múltiplas instâncias simultâneas do scraper
 
 ## 🚨 Troubleshooting
 

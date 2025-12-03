@@ -11,10 +11,11 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from prefect import flow, task, get_run_logger
-from src.config import CATEGORIAS, SCHEDULE_CRON, SCHEDULE_TIMEZONE
+from src.config import CATEGORIAS, SCHEDULE_CRON, SCHEDULE_TIMEZONE, DELAY_BETWEEN_CATEGORIES
 from src.scraper import scrape_all_pages
 from src.database_postgres import get_database
 from datetime import datetime
+import time
 
 # ========== TAREFAS (TASKS) ==========
 
@@ -132,7 +133,10 @@ def coletar_todas_categorias():
     atualizados_geral = 0
     
     # Executar scraping para cada categoria
-    for categoria, config in CATEGORIAS.items():
+    categorias_list = list(CATEGORIAS.items())
+    total_categorias = len(categorias_list)
+    
+    for idx, (categoria, config) in enumerate(categorias_list, 1):
         try:
             resultado = scrape_categoria(categoria, config)
             resultados[categoria] = resultado
@@ -140,6 +144,11 @@ def coletar_todas_categorias():
             total_geral += resultado.get("total_produtos", 0)
             novos_geral += resultado.get("total_novos", 0)
             atualizados_geral += resultado.get("total_atualizados", 0)
+            
+            # Delay entre categorias para não sobrecarregar o servidor
+            if idx < total_categorias:  # Não precisa esperar após a última categoria
+                logger.info(f"⏳ Aguardando {DELAY_BETWEEN_CATEGORIES} segundos antes da próxima categoria...")
+                time.sleep(DELAY_BETWEEN_CATEGORIES)
             
         except Exception as e:
             logger.error(f"❌ Falha na coleta de {categoria}: {str(e)}")
