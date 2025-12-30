@@ -1,14 +1,8 @@
-"""
-Modelos Pydantic para validação de dados.
-Define a estrutura dos produtos e histórico de preços.
-"""
-
 from pydantic import BaseModel, Field, validator
 from datetime import datetime
 from typing import Optional
 
 class ProdutoBase(BaseModel):
-    """Dados básicos de um produto"""
     nome: str = Field(..., min_length=3, max_length=500, description="Nome do produto")
     preco: float = Field(..., gt=0, description="Preço atual do produto")
     link: str = Field(..., description="URL do produto")
@@ -46,18 +40,16 @@ class ProdutoBase(BaseModel):
 
 
 class Produto(ProdutoBase):
-    """Modelo completo de um produto"""
     id: Optional[int] = Field(None, description="ID do produto no banco")
     timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp de coleta")
     primeira_coleta: Optional[datetime] = None
     ultima_atualizacao: Optional[datetime] = None
     
     class Config:
-        from_attributes = True  # Para compatibilidade com SQLAlchemy
+        from_attributes = True
 
 
 class PrecosHistorico(BaseModel):
-    """Histórico de preços de um produto"""
     id: Optional[int] = None
     produto_id: int = Field(..., description="ID do produto")
     preco: float = Field(..., gt=0, description="Preço neste momento")
@@ -75,7 +67,6 @@ class PrecosHistorico(BaseModel):
 
 
 class EstatisticasPreco(BaseModel):
-    """Estatísticas de preço de um produto"""
     produto_id: int
     nome: str
     categoria: str
@@ -107,7 +98,6 @@ class EstatisticasPreco(BaseModel):
 
 
 class RelatorioColeta(BaseModel):
-    """Relatório de uma coleta"""
     id: Optional[int] = None
     categoria: str
     data_inicio: datetime

@@ -1,12 +1,6 @@
-"""
-Configuração de categorias e URLs para coleta de dados.
-Define as categorias de produtos a serem monitoradas.
-"""
-
 import os
 from pathlib import Path
 
-# ========== CATEGORIAS DE PRODUTOS ==========
 CATEGORIAS = {
     "celular": {
         "url": "https://lista.mercadolivre.com.br/celular",
@@ -142,39 +136,27 @@ CATEGORIAS = {
     },
 }
 
-# ========== CAMINHOS E DIRETÓRIOS ==========
 PROJECT_ROOT = Path(__file__).parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 REPORT_DIR = PROJECT_ROOT / "reports"
 
-# Criar diretórios se não existirem
 LOG_DIR.mkdir(exist_ok=True)
 REPORT_DIR.mkdir(exist_ok=True)
 
-# ========== CONFIGURAÇÕES DO SCRAPER ==========
 REQUEST_TIMEOUT = 10
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
-# ========== DELAYS PARA EVITAR SOBRECARGA ==========
-# Delay entre cada requisição de página (em segundos)
-DELAY_BETWEEN_REQUESTS = 5  # 2 segundos entre cada página
+DELAY_BETWEEN_REQUESTS = 5
+DELAY_BETWEEN_CATEGORIES = 10
 
-# Delay entre categorias diferentes (em segundos)
-DELAY_BETWEEN_CATEGORIES = 10  # 5 segundos entre cada categoria
-
-# ========== CONFIGURAÇÕES DE LOGGING ==========
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 LOG_FILE = LOG_DIR / "ml_crawler.log"
 
-# ========== CONFIGURAÇÕES DO PREFECT ==========
-# Schedule: Executar a cada 10 minutos
 SCHEDULE_CRON = "*/10 * * * *"
 SCHEDULE_TIMEZONE = "America/Sao_Paulo"
 
-# ========== CONFIGURAÇÕES DE BANCO DE DADOS ==========
-# PostgreSQL em Docker - variáveis de ambiente do .env
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "ml_crawler")
@@ -182,12 +164,11 @@ DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-ECHO_SQL = False  # Set True para debug SQL
+ECHO_SQL = False
 
-# ========== LIMITES E TIMEOUTS ==========
 MAX_RETRIES = 3
-RETRY_DELAY = 5  # segundos
-BATCH_SIZE = 100  # Inserir produtos em lotes
+RETRY_DELAY = 5
+BATCH_SIZE = 100
 
 print(f"✅ Configuração carregada")
 print(f"   Database: PostgreSQL - {DB_HOST}:{DB_PORT}/{DB_NAME}")

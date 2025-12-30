@@ -1,8 +1,3 @@
-"""
-Gerenciamento do banco de dados com PostgreSQL.
-Otimizado para Streamlit com caching de conexões.
-"""
-
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import SimpleConnectionPool
@@ -16,7 +11,6 @@ import streamlit as st
 from .config import LOG_DIR
 from .models import Produto, PrecosHistorico, RelatorioColeta
 
-# Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -29,15 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 class DatabasePostgres:
-    """Gerenciador de banco de dados PostgreSQL"""
-    
     def __init__(self):
         self.pool = None
         self.init_connection_pool()
     
     @staticmethod
     def get_db_config():
-        """Obtém configuração do banco de dados do ambiente"""
         return {
             "host": os.getenv("DB_HOST", "localhost"),
             "port": int(os.getenv("DB_PORT", 5432)),
@@ -82,7 +73,6 @@ class DatabasePostgres:
 
     
     def init_connection_pool(self):
-        """Inicializa pool de conexões"""
         try:
             config = self.get_db_config()
             self.pool = SimpleConnectionPool(1, 20, **config)
@@ -92,23 +82,19 @@ class DatabasePostgres:
             raise
     
     def get_connection(self):
-        """Obtém conexão do pool"""
         if not self.pool:
             self.init_connection_pool()
         return self.pool.getconn()
     
     def release_connection(self, conn):
-        """Devolve conexão ao pool"""
         if self.pool:
             self.pool.putconn(conn)
     
     def initialize_db(self):
-        """Cria as tabelas se não existirem"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             
-            # Tabela de Produtos
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS produtos (
                     id SERIAL PRIMARY KEY,
@@ -125,7 +111,6 @@ class DatabasePostgres:
                 )
             """)
             
-            # Adicionar colunas se não existirem (migração)
             cursor.execute("""
                 ALTER TABLE produtos 
                 ADD COLUMN IF NOT EXISTS preco_original NUMERIC(10, 2),
@@ -133,7 +118,6 @@ class DatabasePostgres:
                 ADD COLUMN IF NOT EXISTS imagem_url TEXT
             """)
             
-            # Tabela de Histórico de Preços
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS precos_historico (
                     id SERIAL PRIMARY KEY,
@@ -144,7 +128,6 @@ class DatabasePostgres:
                 )
             """)
             
-            # Tabela de Coletas (logs)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS coletas (
                     id SERIAL PRIMARY KEY,
@@ -159,7 +142,6 @@ class DatabasePostgres:
                 )
             """)
             
-            # Índices para performance
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_categoria 
                 ON produtos(categoria)
@@ -187,15 +169,11 @@ class DatabasePostgres:
         finally:
             self.release_connection(conn)
     
-    # ========== OPERAÇÕES COM PRODUTOS ==========
-    
     def adicionar_produto(self, produto: Produto) -> Optional[int]:
-        """Adiciona novo produto e retorna o ID, verifica duplicata por produto_id_ml"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             
-            # Verificar se produto já existe pelo produto_id_ml
             if produto.produto_id_ml:
                 cursor.execute(
                     "SELECT id FROM produtos WHERE produto_id_ml = %s",
@@ -205,9 +183,8 @@ class DatabasePostgres:
                 if resultado:
                     produto_id = resultado[0]
                     logger.warning(f"⚠️ Produto duplicado (ID ML: {produto.produto_id_ml}): {produto.nome}")
-                    return produto_id  # Retorna ID existente
+                    return produto_id
             
-            # Inserir novo produto
             cursor.execute("""
                 INSERT INTO produtos (nome, link, categoria, preco_atual, preco_original, percentual_desconto, imagem_url, produto_id_ml)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -223,7 +200,6 @@ class DatabasePostgres:
         except psycopg2.IntegrityError:
             conn.rollback()
             logger.warning(f"⚠️ Produto duplicado (por constraint): {produto.nome}")
-            # Tentar recuperar ID existente
             cursor = conn.cursor()
             cursor.execute("SELECT id FROM produtos WHERE link = %s", (produto.link,))
             resultado = cursor.fetchone()
@@ -236,7 +212,6 @@ class DatabasePostgres:
             self.release_connection(conn)
     
     def obter_produto_por_link(self, link: str) -> Optional[Dict]:
-        """Obtém produto pelo link"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -245,7 +220,6 @@ class DatabasePostgres:
         finally:
             self.release_connection(conn)
     def obter_produtos_por_categoria(self, categoria: str) -> List[Dict]:
-        """Lista todos os produtos de uma categoria"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -262,19 +236,16 @@ class DatabasePostgres:
             self.release_connection(conn)
     
     def atualizar_preco(self, produto_id: int, novo_preco: float):
-        """Atualiza preço atual e cria histórico (mantido para compatibilidade)"""
         self.atualizar_produto(produto_id, novo_preco)
     
     def atualizar_produto(self, produto_id: int, novo_preco: float, 
                          preco_original: float = None, 
                          percentual_desconto: float = None, 
                          imagem_url: str = None):
-        """Atualiza todos os campos do produto e cria histórico"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             
-            # Construir query dinamicamente baseado nos campos fornecidos
             updates = ["preco_atual = %s", "ultima_atualizacao = CURRENT_TIMESTAMP"]
             params = [novo_preco]
             
@@ -292,14 +263,12 @@ class DatabasePostgres:
             
             params.append(produto_id)
             
-            # Atualizar produto
             cursor.execute(f"""
                 UPDATE produtos 
                 SET {', '.join(updates)}
                 WHERE id = %s
             """, tuple(params))
             
-            # Adicionar ao histórico
             cursor.execute("""
                 INSERT INTO precos_historico (produto_id, preco)
                 VALUES (%s, %s)
@@ -315,7 +284,6 @@ class DatabasePostgres:
             self.release_connection(conn)
     
     def obter_todos_produtos(self, limite: int = 1000) -> List[Dict]:
-        """Obtém todos os produtos com limite"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -328,10 +296,7 @@ class DatabasePostgres:
         finally:
             self.release_connection(conn)
     
-    # ========== OPERAÇÕES COM COLETAS ==========
-    
     def iniciar_coleta(self, categoria: str) -> int:
-        """Inicia uma nova coleta e retorna o ID"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -349,7 +314,6 @@ class DatabasePostgres:
     def finalizar_coleta(self, coleta_id: int, total_produtos: int, 
                         total_novos: int, total_atualizados: int, 
                         sucesso: bool, erro: Optional[str] = None):
-        """Finaliza uma coleta com estatísticas"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -369,15 +333,11 @@ class DatabasePostgres:
         finally:
             self.release_connection(conn)
     
-    # ========== ANÁLISES E RELATÓRIOS ==========
-    
     def obter_estatisticas_produto(self, produto_id: int) -> Optional[Dict]:
-        """Obtém estatísticas completo de um produto"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Dados do produto
             cursor.execute("""
                 SELECT * FROM produtos WHERE id = %s
             """, (produto_id,))
@@ -386,7 +346,6 @@ class DatabasePostgres:
             if not produto:
                 return None
             
-            # Histórico de preços
             cursor.execute("""
                 SELECT preco, data FROM precos_historico 
                 WHERE produto_id = %s 
@@ -416,7 +375,6 @@ class DatabasePostgres:
             self.release_connection(conn)
     
     def obter_relatorio_categoria(self, categoria: str) -> Dict:
-        """Gera relatório completo de uma categoria"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -456,7 +414,6 @@ class DatabasePostgres:
             self.release_connection(conn)
     
     def obter_historico_preco(self, produto_id: int, dias: int = 30) -> List[Dict]:
-        """Obtém histórico de preço dos últimos X dias"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -471,7 +428,6 @@ class DatabasePostgres:
             self.release_connection(conn)
     
     def limpar_dados_antigos(self, dias: int = 90):
-        """Remove histórico de preços com mais de X dias"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -486,7 +442,6 @@ class DatabasePostgres:
             self.release_connection(conn)
     
     def obter_categorias(self) -> List[str]:
-        """Obtém lista de categorias com produtos"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -504,24 +459,14 @@ class DatabasePostgres:
             self.release_connection(conn)
 
     def close_pool(self):
-        """Fecha pool de conexões"""
         if self.pool:
             self.pool.closeall()
             logger.info("✅ Pool de conexões fechado")
 
 
-# ========== INTEGRAÇÃO COM STREAMLIT ==========
-
-# @st.cache_resource
 def get_database():
-    """
-    Obtém instância do banco de dados em cache do Streamlit.
-    Reusa a mesma conexão entre reruns.
-    """
     db = DatabasePostgres()
     db.initialize_db()
     return db
 
-
-# Instância global
 db = get_database()
